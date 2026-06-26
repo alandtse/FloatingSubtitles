@@ -32,6 +32,7 @@ std::pair<bool, bool> Manager::MCMSettings::LoadMCMSettings(const CSimpleIniA& a
 	offscreenSubs = static_cast<OffscreenSubtitle>(a_ini.GetLongValue("Settings", "iOffscreenSubtitles", std::to_underlying(offscreenSubs)));
 	maxOffscreenSubs = a_ini.GetLongValue("Settings", "iMaxOffscreenSubtitles", maxOffscreenSubs);
 	scrollSubtitles = a_ini.GetBoolValue("Settings", "bScrollSubtitles", scrollSubtitles);
+	debugLog = a_ini.GetBoolValue("Settings", "bDebugLog", debugLog);
 
 	return {
 		previous.showDualSubs != current.showDualSubs, (!previous.showGeneralSubtitles && current.showGeneralSubtitles || !previous.showDialogueSubtitles && current.showDialogueSubtitles)
@@ -46,6 +47,10 @@ void Manager::LoadMCMSettings()
 
 		std::tie(rebuildSubs, hideSubs) = settings.LoadMCMSettings(ini);
 		rebuildSubs |= localizedSubs.LoadMCMSettings(ini);
+
+		auto level = settings.debugLog ? spdlog::level::debug : spdlog::level::info;
+		spdlog::default_logger()->set_level(level);
+		spdlog::default_logger()->flush_on(level);
 
 		// force hide vanilla subtitle
 		if (hideSubs) {
@@ -357,7 +362,7 @@ void Manager::CalculateVisibility(RE::SubtitleInfoEx& a_subInfo)
 	const auto ref = a_subInfo.speaker.get();
 	const auto actor = ref->As<RE::Actor>();
 
-	switch (RayCaster(actor).GetResult(false)) {
+	switch (RayCaster(actor).GetResult(false, GetSingleton()->settings.doRayCastChecks)) {
 	case RayCaster::Result::kOffscreen:
 		{
 			a_subInfo.setFlag(RE::SubtitleInfoEx::Flag::kOffscreen, true);
@@ -412,12 +417,12 @@ RE::NiPoint3 Manager::GetSubtitleAnchorPosImpl(const RE::TESObjectREFRPtr& a_ref
 	if (const auto headNode = RE::GetHeadNode(a_ref)) {
 		pos = headNode->world.translate;
 		if (a_log) {
-			logger::info("[SubtitlePos] Found head node. world translate: ({:.2f}, {:.2f}, {:.2f})", pos.x, pos.y, pos.z);
+			logger::debug("[SubtitlePos] Found head node. world translate: ({:.2f}, {:.2f}, {:.2f})", pos.x, pos.y, pos.z);
 		}
 	} else {
 		pos.z += a_height;
 		if (a_log) {
-			logger::info("[SubtitlePos] Head node NOT found, using fallback height offset. Pos with fallback: ({:.2f}, {:.2f}, {:.2f})", pos.x, pos.y, pos.z);
+			logger::debug("[SubtitlePos] Head node NOT found, using fallback height offset. Pos with fallback: ({:.2f}, {:.2f}, {:.2f})", pos.x, pos.y, pos.z);
 		}
 	}
 	return pos;
@@ -432,16 +437,16 @@ RE::NiPoint3 Manager::CalculateSubtitleAnchorPos(const RE::SubtitleInfoEx& a_sub
 	auto offset = settings.subtitleHeadOffset;
 
 	if (a_log) {
-		logger::info("[SubtitlePos] Speaker: {}, Height: {:.2f}, BasePos: ({:.2f}, {:.2f}, {:.2f})", 
+		logger::debug("[SubtitlePos] Speaker: {}, Height: {:.2f}, BasePos: ({:.2f}, {:.2f}, {:.2f})",
 			ModAPIHandler::GetSingleton()->GetReferenceName(ref), height, ref->GetPosition().x, ref->GetPosition().y, ref->GetPosition().z);
-		logger::info("[SubtitlePos] Head offset config: {:.2f}", settings.subtitleHeadOffset);
+		logger::debug("[SubtitlePos] Head offset config: {:.2f}", settings.subtitleHeadOffset);
 	}
 
 	if (auto overridePosZ = ModAPIHandler::GetSingleton()->GetWidgetPosZ(ref, settings.useBTPSWidgetPosition, settings.useTrueHUDWidgetPosition)) {
 		pos.z = *overridePosZ;
 		offset = settings.subtitleHeadOffset * 0.75f;
 		if (a_log) {
-			logger::info("[SubtitlePos] Widget position overridden, Z: {:.2f}, Adjusted offset: {:.2f}", pos.z, offset);
+			logger::debug("[SubtitlePos] Widget position overridden, Z: {:.2f}, Adjusted offset: {:.2f}", pos.z, offset);
 		}
 	}
 
@@ -449,7 +454,7 @@ RE::NiPoint3 Manager::CalculateSubtitleAnchorPos(const RE::SubtitleInfoEx& a_sub
 	pos.z += finalOffset;
 
 	if (a_log) {
-		logger::info("[SubtitlePos] Final offset applied: {:.2f}, Calculated anchorPos: ({:.2f}, {:.2f}, {:.2f})", finalOffset, pos.x, pos.y, pos.z);
+		logger::debug("[SubtitlePos] Final offset applied: {:.2f}, Calculated anchorPos: ({:.2f}, {:.2f}, {:.2f})", finalOffset, pos.x, pos.y, pos.z);
 	}
 
 	return pos;
@@ -465,7 +470,7 @@ void Manager::Draw()
 
 	RE::BSSpinLockGuard gameLocker(subtitleManager->lock);
 	{
-		if (REL::Module::IsVR()) {
+		if (stl::IsVR()) {
 			ImGui::SetNextWindowPos({ 0.0f, 0.0f });
 			ImGui::SetNextWindowSize(ImGui::GetIO().DisplaySize);
 		} else {
@@ -489,6 +494,12 @@ void Manager::Draw()
 			frameCount++;
 			bool logThisFrame = (frameCount % 180 == 0);
 
+			static FlatMap<RE::FormID, float> maxDurations;
+			struct CustomTimer {
+				std::chrono::steady_clock::time_point startTime;
+				float duration;
+			};
+			static FlatMap<RE::FormID, CustomTimer> customSubtitleTimers;
 			for (auto& subInfo : subtitleArray | std::views::reverse) {  // reverse order so closer subtitles get rendered on top
 				if (const auto& ref = subInfo.speaker.get()) {
 					if (inFreeCameraMode) {
@@ -514,7 +525,146 @@ void Manager::Draw()
 						params.speakerName.clear();
 					}
 
+					float elapsedTime = 0.0f;
+					float duration = 0.0f;
+					auto  extraSay = ref->extraList.GetByType<RE::ExtraSayToTopicInfo>();
+					if (extraSay) {
+						float remaining = extraSay->subtitleSpeechDelay;
+						if (extraSay->sound.IsValid()) {
+							duration = static_cast<float>(extraSay->sound.GetDuration()) * 0.001f;
+						}
+
+						if (duration <= 0.0f) {
+							static FlatMap<RE::FormID, float> silentDurations;
+							auto                              formID = ref->GetFormID();
+							auto                              it = silentDurations.find(formID);
+							if (it == silentDurations.end() || remaining > it->second) {
+								silentDurations[formID] = remaining;
+								duration = remaining;
+							} else {
+								duration = it->second;
+							}
+						}
+
+						elapsedTime = std::clamp(duration - remaining, 0.0f, duration);
+
+						if (logThisFrame && duration > 0.0f) {
+							logger::debug("[Manager::Draw] Subtitle '{}' timing (ExtraSayToTopicInfo): remaining={:.2f}s, elapsed={:.2f}s, duration={:.2f}s",
+								subInfo.subtitle.c_str(), remaining, elapsedTime, duration);
+						}
+					} else if (auto actor = ref->As<RE::Actor>()) {
+						float remaining = actor->GetActorRuntimeData().timerOnAction;
+						if (remaining > 0.0f) {
+							auto formID = actor->GetFormID();
+							auto it = maxDurations.find(formID);
+							if (it == maxDurations.end() || remaining > it->second) {
+								maxDurations[formID] = remaining;
+								duration = remaining;
+							} else {
+								duration = it->second;
+							}
+							elapsedTime = std::clamp(duration - remaining, 0.0f, duration);
+
+							if (logThisFrame && duration > 0.0f) {
+								logger::debug("[Manager::Draw] Subtitle '{}' timing (timerOnAction fallback): remaining={:.2f}s, elapsed={:.2f}s, duration={:.2f}s",
+									subInfo.subtitle.c_str(), remaining, elapsedTime, duration);
+							}
+						}
+					}
+
+					if (duration <= 0.0f) {
+						auto formID = ref->GetFormID();
+						auto now = std::chrono::steady_clock::now();
+						auto it = customSubtitleTimers.find(formID);
+						if (it == customSubtitleTimers.end()) {
+							float calcDuration = 2.0f + 0.05f * subInfo.subtitle.length();
+							customSubtitleTimers[formID] = { now, calcDuration };
+							duration = calcDuration;
+							elapsedTime = 0.0f;
+						} else {
+							duration = it->second.duration;
+							elapsedTime = std::chrono::duration<float>(now - it->second.startTime).count();
+							elapsedTime = std::clamp(elapsedTime, 0.0f, duration);
+						}
+
+						if (logThisFrame && duration > 0.0f) {
+							logger::debug("[Manager::Draw] Subtitle '{}' timing (Custom tracking fallback): elapsed={:.2f}s, duration={:.2f}s",
+								subInfo.subtitle.c_str(), elapsedTime, duration);
+						}
+					}
+
+					params.elapsedTime = elapsedTime;
+					params.duration = duration;
+
+					// Distance-based font scaling
+					float distance = std::sqrt(subInfo.targetDistance);
+					float fontScale = 1.0f;
+					float maxDist = std::sqrt(maxDistanceStartSq);
+					if (maxDist > 200.0f) {
+						if (distance > 200.0f) {
+							fontScale = 1.0f - ((distance - 200.0f) / (maxDist - 200.0f)) * 0.5f;
+							fontScale = std::clamp(fontScale, 0.5f, 1.0f);
+						}
+					}
+
+					// Check if there is a closer speaker in between (similar angular direction)
+					bool closerSpeakerInBetween = false;
+					auto playerLoc = RE::PlayerCharacter::GetSingleton()->GetPosition();
+					RE::NiPoint3 dirDistant = ref->GetPosition() - playerLoc;
+					dirDistant.Unitize();
+
+					for (const auto& otherSubInfo : subtitleArray) {
+						if (&otherSubInfo != &subInfo && otherSubInfo.isFlagSet(SubtitleFlag::kDraw)) {
+							if (otherSubInfo.targetDistance < subInfo.targetDistance) {
+								if (const auto otherRef = otherSubInfo.speaker.get()) {
+									RE::NiPoint3 dirCloser = otherRef->GetPosition() - playerLoc;
+									dirCloser.Unitize();
+									float dot = dirDistant.x * dirCloser.x + dirDistant.y * dirCloser.y + dirDistant.z * dirCloser.z;
+									// cos(25 degrees) ≈ 0.906
+									if (dot > 0.906f) {
+										closerSpeakerInBetween = true;
+										break;
+									}
+								}
+							}
+						}
+					}
+
+					if (closerSpeakerInBetween) {
+						fontScale *= 0.75f;
+						fontScale = std::clamp(fontScale, 0.40f, 1.0f);
+					}
+
+					params.fontScale = fontScale;
+
+					if (logThisFrame) {
+						logger::debug("[Manager::Draw] Speaker '{}' distance={:.1f}, fontScale={:.2f}, inBetween={}",
+							ModAPIHandler::GetSingleton()->GetReferenceName(ref), distance, fontScale, closerSpeakerInBetween);
+					}
+
 					DrawProcessedSubtitle(subInfo.subtitle, params);
+				}
+			}
+
+			// Clean up maxDurations for actors that are no longer speaking
+			std::vector<RE::FormID> activeFormIDs;
+			for (auto& subInfo : subtitleArray) {
+				if (const auto& ref = subInfo.speaker.get()) {
+					activeFormIDs.push_back(ref->GetFormID());
+				}
+			}
+			for (auto it = maxDurations.begin(); it != maxDurations.end();) {
+				if (std::find(activeFormIDs.begin(), activeFormIDs.end(), it->first) == activeFormIDs.end()) {
+					it = maxDurations.erase(it);
+				} else {
+					++it;
+				}
+			}
+			for (auto it = customSubtitleTimers.begin(); it != customSubtitleTimers.end();) {
+				if (std::find(activeFormIDs.begin(), activeFormIDs.end(), it->first) == activeFormIDs.end()) {
+					it = customSubtitleTimers.erase(it);
+				} else {
+					++it;
 				}
 			}
 		}

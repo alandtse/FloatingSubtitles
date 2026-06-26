@@ -3,6 +3,7 @@
 #include "ImGui/Renderer.h"
 #include "Manager.h"
 #include "Papyrus.h"
+#include "SettingLoader.h"
 
 void OnInit(SKSE::MessagingInterface::Message* a_msg)
 {
@@ -32,6 +33,7 @@ void OnInit(SKSE::MessagingInterface::Message* a_msg)
 	}
 }
 
+#if defined(SKYRIM_SUPPORT_VR) || defined(COMMONLIBSSE_NG)
 extern "C" DLLEXPORT constinit auto SKSEPlugin_Version = []() {
 	SKSE::PluginVersionData v;
 	v.PluginVersion(Version::MAJOR);
@@ -70,6 +72,48 @@ extern "C" DLLEXPORT bool SKSEAPI SKSEPlugin_Query(const SKSE::QueryInterface* a
 
 	return true;
 }
+#else
+#ifdef SKYRIM_AE
+extern "C" DLLEXPORT constinit auto SKSEPlugin_Version = []() {
+	SKSE::PluginVersionData v;
+	v.PluginVersion(Version::MAJOR);
+	v.PluginName("FloatingSubtitles");
+	v.AuthorName("powerofthree");
+	v.UsesAddressLibrary();
+	v.UsesUpdatedStructs();
+	v.CompatibleVersions({ SKSE::RUNTIME_SSE_LATEST });
+
+	return v;
+}();
+#else
+extern "C" DLLEXPORT bool SKSEAPI SKSEPlugin_Query(const SKSE::QueryInterface* a_skse, SKSE::PluginInfo* a_info)
+{
+	a_info->infoVersion = SKSE::PluginInfo::kVersion;
+	a_info->name = "FloatingSubtitles";
+	a_info->version = Version::MAJOR;
+
+	if (a_skse->IsEditor()) {
+		logger::critical("Loaded in editor, marking as incompatible"sv);
+		return false;
+	}
+
+	const auto ver = a_skse->RuntimeVersion();
+#ifdef SKYRIMVR
+	if (ver < SKSE::RUNTIME_VR_1_4_15) {
+		logger::critical(FMT_STRING("Unsupported VR runtime version {}"), ver.string());
+		return false;
+	}
+#else
+	if (ver < SKSE::RUNTIME_SSE_1_5_39) {
+		logger::critical(FMT_STRING("Unsupported runtime version {}"), ver.string());
+		return false;
+	}
+#endif
+
+	return true;
+}
+#endif
+#endif
 
 void InitializeLog()
 {
@@ -83,13 +127,26 @@ void InitializeLog()
 
 	auto log = std::make_shared<spdlog::logger>("global log"s, std::move(sink));
 
-	log->set_level(spdlog::level::info);
-	log->flush_on(spdlog::level::info);
+	bool debugLog = false;
+	CSimpleIniA ini;
+	ini.SetUnicode();
+	if (ini.LoadFile(L"Data/MCM/Settings/FloatingSubtitles.ini") >= SI_OK) {
+		debugLog = ini.GetBoolValue("Settings", "bDebugLog", false);
+	} else if (ini.LoadFile(L"Data/MCM/Config/FloatingSubtitles/settings.ini") >= SI_OK) {
+		debugLog = ini.GetBoolValue("Settings", "bDebugLog", false);
+	}
+
+	auto level = debugLog ? spdlog::level::debug : spdlog::level::info;
+	log->set_level(level);
+	log->flush_on(level);
 
 	spdlog::set_default_logger(std::move(log));
 	spdlog::set_pattern("[%H:%M:%S] %v");
 
 	logger::info(FMT_STRING("{} v{}"), Version::PROJECT, Version::NAME);
+	if (debugLog) {
+		logger::info("Debug logging enabled.");
+	}
 }
 
 extern "C" DLLEXPORT bool SKSEAPI SKSEPlugin_Load(const SKSE::LoadInterface* a_skse)

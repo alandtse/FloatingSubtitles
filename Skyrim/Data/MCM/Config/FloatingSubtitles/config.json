@@ -139,6 +139,18 @@
           }
         },
         {
+          "type": "empty"
+        },
+        {
+          "id": "bDebugLog:Settings",
+          "text": "$FSUB_DebugLogging_Text",
+          "type": "toggle",
+          "help": "$FSUB_DebugLogging_Help",
+          "valueOptions": {
+            "sourceType": "ModSettingBool"
+          }
+        },
+        {
           "id": "bDualSubtitles:Settings",
           "text": "$FSUB_DualSubtitles_Text",
           "type": "toggle",

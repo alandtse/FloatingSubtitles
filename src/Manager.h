@@ -55,6 +55,7 @@ public:
 		OffscreenSubtitle offscreenSubs{ OffscreenSubtitle::kSingle };
 		std::uint32_t     maxOffscreenSubs{ 3 };
 		bool              scrollSubtitles{ true };
+		bool              debugLog{ false };
 	};
 
 	const MCMSettings& GetSettings() const { return settings; }
