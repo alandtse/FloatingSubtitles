@@ -35,7 +35,7 @@ public:
 	RayCaster() = default;
 	RayCaster(RE::Actor* a_target);
 
-	Result GetResult(bool a_debugRay);
+	Result GetResult(bool a_debugRay, bool a_doRayCast = true);
 
 private:
 	void DebugRay(const RE::bhkPickData& a_pickData, const RE::NiPoint3& a_targetPos, ImU32 color) const;

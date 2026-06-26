@@ -70,7 +70,7 @@ RayCaster::RayCaster(RE::Actor* a_target) :
 	startPoint.Init();
 }
 
-RayCaster::Result RayCaster::GetResult(bool a_debugRay)
+RayCaster::Result RayCaster::GetResult(bool a_debugRay, bool a_doRayCast)
 {
 	auto* root = actor->Get3D();
 	if (!root) {
@@ -88,6 +88,10 @@ RayCaster::Result RayCaster::GetResult(bool a_debugRay)
 
 	if (!bhkWorld) {
 		return Result::kOffscreen;  // can't raycast so might as well return true
+	}
+
+	if (!a_doRayCast) {
+		return Result::kVisible;
 	}
 
 	targetPoints[0] = actor->CalculateLOSLocation(RE::ACTOR_LOS_LOCATION::kEye);

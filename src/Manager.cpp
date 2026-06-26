@@ -17,7 +17,7 @@ std::pair<bool, bool> Manager::MCMSettings::LoadMCMSettings(const CSimpleIniA& a
 
 	subtitleHeadOffset = static_cast<float>(a_ini.GetDoubleValue("Settings", "fHeadOffset", 20.0)) * ModAPIHandler::GetSingleton()->GetResolutionScale();
 
-	doRayCastChecks = a_ini.GetBoolValue("Settings", "bEnableRaycastChecks", doRayCastChecks);
+	doRayCastChecks = a_ini.GetBoolValue("Settings", "bRequireLineOfSight", doRayCastChecks);
 
 	obscuredSubtitleAlpha = static_cast<float>(a_ini.GetDoubleValue("Settings", "fObscuredSubtitleOpacity", obscuredSubtitleAlpha));
 
