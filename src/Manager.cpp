@@ -31,6 +31,7 @@ std::pair<bool, bool> Manager::MCMSettings::LoadMCMSettings(const CSimpleIniA& a
 
 	offscreenSubs = static_cast<OffscreenSubtitle>(a_ini.GetLongValue("Settings", "iOffscreenSubtitles", std::to_underlying(offscreenSubs)));
 	maxOffscreenSubs = a_ini.GetLongValue("Settings", "iMaxOffscreenSubtitles", maxOffscreenSubs);
+	scrollSubtitles = a_ini.GetBoolValue("Settings", "bScrollSubtitles", scrollSubtitles);
 
 	return {
 		previous.showDualSubs != current.showDualSubs, (!previous.showGeneralSubtitles && current.showGeneralSubtitles || !previous.showDialogueSubtitles && current.showDialogueSubtitles)

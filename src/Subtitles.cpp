@@ -1,8 +1,12 @@
 #include "Subtitles.h"
 
+#include <algorithm>
+#include <cmath>
+
 #include "Compatibility.h"
 #include "ImGui/FontStyles.h"
 #include "ImGui/Util.h"
+#include "Manager.h"
 
 Subtitle::Subtitle(const LocalizedSubtitle& a_subtitle) :
 	fullLine(a_subtitle.subtitle),
@@ -14,7 +18,8 @@ void Subtitle::WrapTextImpl()
 {
 	lines.clear();
 
-	const auto& [text, maxLineWidth, lang] = cached;
+	const auto& [text, maxChars, lang] = cached;
+	std::uint32_t maxLineWidth = stl::IsVR() ? (maxChars >= 80 ? 45 : maxChars) : maxChars;
 
 	if (IsTextCJK(text)) {
 		WrapCJKText(lines, text, maxLineWidth);
@@ -241,7 +246,7 @@ std::vector<std::string> Subtitle::SplitText(const std::string& a_text)
 		std::string prefix = match.prefix().str();
 		if (!prefix.empty()) {
 			for (auto it = srell::sregex_iterator(prefix.begin(), prefix.end(), re);
-				 it != srell::sregex_iterator(); ++it) {
+				it != srell::sregex_iterator(); ++it) {
 				result.push_back(it->str());
 			}
 		}
@@ -253,7 +258,7 @@ std::vector<std::string> Subtitle::SplitText(const std::string& a_text)
 
 	if (!remaining.empty()) {
 		for (auto it = srell::sregex_iterator(remaining.begin(), remaining.end(), re);
-			 it != srell::sregex_iterator(); ++it) {
+			it != srell::sregex_iterator(); ++it) {
 			result.push_back(it->str());
 		}
 	}
@@ -335,45 +340,80 @@ bool Subtitle::IsTextCJK(const std::string& str)
 
 void Subtitle::WrapText()
 {
-	if (lines.empty()) {
+	if (!isWrapped) {
 		WrapTextImpl();
+		isWrapped = true;
+		if (!lines.empty()) {
+			logger::debug("Subtitle wrapped into {} lines", lines.size());
+		}
 	}
-	logger::info("Subtitle wrapped into {} lines", lines.size());
 }
 
 void Subtitle::Invalidate()
 {
 	lines.clear();
+	isWrapped = false;
 }
 
-void Subtitle::DrawSubtitle(float a_posX, float& a_posY, float a_alpha, float a_lineHeight) const
+void Subtitle::DrawSubtitle(float a_posX, float& a_posY, float a_alpha, float a_lineHeight, float a_elapsedTime, float a_duration) const
 {
 	if (a_alpha < 0.01f) {
 		return;
 	}
 
+	if (lines.empty()) {
+		return;
+	}
+
 	ImGui::PushStyleVar(ImGuiStyleVar_Alpha, a_alpha);
 
-	for (const auto& line : lines) {
-		a_posY -= a_lineHeight;
-
+	const auto draw_single_line = [a_posX, a_lineHeight](const Line& line, float yPos, float lineAlpha) {
+		if (lineAlpha < 0.01f) {
+			return;
+		}
+		ImGui::PushStyleVar(ImGuiStyleVar_Alpha, lineAlpha);
 		float currentX = a_posX - (line.sizeX * 0.5f);
-
 		for (const auto& word : line.words) {
 			if (word.isDragonFont) {
 				ImGui::FontStyles::GetSingleton()->PushDragonFont();
 			}
 
-			const ImVec2 textPos(currentX, a_posY);
+			const ImVec2 textPos(currentX, yPos);
 			ImGui::SetCursorScreenPos(textPos);
-
 			ImGui::Text(word.word.c_str());
 
 			if (word.isDragonFont) {
 				ImGui::PopFont();
 			}
-
 			currentX += word.size.x;
+		}
+		ImGui::PopStyleVar();
+	};
+
+	if (Manager::GetSingleton()->GetSettings().scrollSubtitles && a_duration > 0.0f && lines.size() > 1) {
+		const auto  n = lines.size();
+		const float D = a_duration / static_cast<float>(n);
+		int         j = static_cast<int>(std::floor(a_elapsedTime / D));
+		j = std::clamp(j, 0, static_cast<int>(n) - 1);
+
+		const float tau = a_elapsedTime - (static_cast<float>(j) * D);
+		const float T_trans = std::min(0.5f, D * 0.5f);
+
+		a_posY -= a_lineHeight;
+
+		if (tau > D - T_trans && j < static_cast<int>(n) - 1) {
+			float f = (tau - (D - T_trans)) / T_trans;
+			f = std::clamp(f, 0.0f, 1.0f);
+
+			draw_single_line(lines[n - 1 - j], a_posY - (f * a_lineHeight), a_alpha * (1.0f - f));
+			draw_single_line(lines[n - 1 - (j + 1)], a_posY + ((1.0f - f) * a_lineHeight), a_alpha * f);
+		} else {
+			draw_single_line(lines[n - 1 - j], a_posY, a_alpha);
+		}
+	} else {
+		for (const auto& line : lines) {
+			a_posY -= a_lineHeight;
+			draw_single_line(line, a_posY, a_alpha);
 		}
 	}
 
@@ -403,6 +443,8 @@ void DualSubtitle::Invalidate()
 
 void DualSubtitle::DrawDualSubtitle(const ScreenParams& a_screenParams) const
 {
+	ImGui::SetWindowFontScale(a_screenParams.fontScale);
+
 	const auto lineHeight = ImGui::GetTextLineHeight();
 	auto [posX, posY] = a_screenParams.pos;
 
@@ -419,9 +461,13 @@ void DualSubtitle::DrawDualSubtitle(const ScreenParams& a_screenParams) const
 		}
 	}
 
-	float totalLines = static_cast<float>(primary.lines.size());
+	bool isScrolling = Manager::GetSingleton()->GetSettings().scrollSubtitles && a_screenParams.duration > 0.0f;
+	float primaryLines = (primary.lines.size() > 1 && isScrolling) ? 1.0f : static_cast<float>(primary.lines.size());
+	float secondaryLines = (secondary.lines.size() > 1 && isScrolling) ? 1.0f : static_cast<float>(secondary.lines.size());
+
+	float totalLines = primaryLines;
 	if (!secondary.lines.empty()) {
-		totalLines += static_cast<float>(secondary.lines.size()) + a_screenParams.spacing;
+		totalLines += secondaryLines + a_screenParams.spacing;
 	}
 	if (!a_screenParams.speakerName.empty() && a_screenParams.alphaPrimary >= 0.01f) {
 		totalLines += 1.0f;
@@ -450,10 +496,10 @@ void DualSubtitle::DrawDualSubtitle(const ScreenParams& a_screenParams) const
 
 	if (!secondary.lines.empty()) {
 		posY -= lineHeight * a_screenParams.spacing;
-		secondary.DrawSubtitle(posX, posY, a_screenParams.alphaSecondary, lineHeight);
+		secondary.DrawSubtitle(posX, posY, a_screenParams.alphaSecondary, lineHeight, a_screenParams.elapsedTime, a_screenParams.duration);
 	}
 
-	primary.DrawSubtitle(posX, posY, a_screenParams.alphaPrimary, lineHeight);
+	primary.DrawSubtitle(posX, posY, a_screenParams.alphaPrimary, lineHeight, a_screenParams.elapsedTime, a_screenParams.duration);
 
 	if (!a_screenParams.speakerName.empty() && a_screenParams.alphaPrimary >= 0.01f) {
 		posY -= lineHeight;
@@ -470,6 +516,8 @@ void DualSubtitle::DrawDualSubtitle(const ScreenParams& a_screenParams) const
 		ImGui::PopStyleColor();
 		ImGui::PopStyleVar();
 	}
+
+	ImGui::SetWindowFontScale(1.0f);
 }
 
 std::string DualSubtitle::GetScaleformCompatibleSubtitle(bool a_dualSubs) const

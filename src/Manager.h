@@ -23,7 +23,6 @@ public:
 	bool HandlesGeneralSubtitles() const;
 	bool HandlesDialogueSubtitles() const;
 
-private:
 	enum class OffscreenSubtitle
 	{
 		kDisabled = 0,
@@ -55,8 +54,12 @@ private:
 		float             subtitleAlphaSecondary{ 1.0f };
 		OffscreenSubtitle offscreenSubs{ OffscreenSubtitle::kSingle };
 		std::uint32_t     maxOffscreenSubs{ 3 };
+		bool              scrollSubtitles{ true };
 	};
 
+	const MCMSettings& GetSettings() const { return settings; }
+
+private:
 	using SubtitleFlag = RE::SubtitleInfoEx::Flag;
 
 	using RWLock = std::shared_mutex;

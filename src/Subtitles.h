@@ -28,11 +28,12 @@ struct Subtitle
 	void WrapText();
 	void Invalidate();
 
-	void DrawSubtitle(float a_posX, float& a_posY, float a_alpha, float a_lineHeight) const;
+	void DrawSubtitle(float a_posX, float& a_posY, float a_alpha, float a_lineHeight, float a_elapsedTime = 0.0f, float a_duration = 0.0f) const;
 
 	std::vector<Line> lines{};
 	std::string       fullLine{};
 	bool              validForScaleform{ false };
+	bool              isWrapped{ false };
 
 private:
 	LocalizedSubtitle cached{};
@@ -56,6 +57,9 @@ struct DualSubtitle
 		float       spacing{ 0.5f };
 		std::string speakerName{};
 		ImVec4      speakerColor;
+		float       elapsedTime{ 0.0f };
+		float       duration{ 0.0f };
+		float       fontScale{ 1.0f };
 	};
 
 	DualSubtitle() = default;

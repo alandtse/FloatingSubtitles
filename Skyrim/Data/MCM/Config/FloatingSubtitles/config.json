@@ -41,6 +41,15 @@
           }
         },
         {
+          "id": "bScrollSubtitles:Settings",
+          "text": "$FSUB_ScrollSubtitles_Text",
+          "type": "toggle",
+          "help": "$FSUB_ScrollSubtitles_Help",
+          "valueOptions": {
+            "sourceType": "ModSettingBool"
+          }
+        },
+        {
           "id": "fHeadOffset:Settings",
           "text": "$FSUB_SubtitleHeadOffset_Text",
           "type": "slider",
