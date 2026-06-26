@@ -73,8 +73,8 @@ private:
 	void                DrawProcessedSubtitle(const RE::BSString& a_subtitle, const DualSubtitle::ScreenParams& a_);
 	void                RebuildProcessedSubtitles();
 
-	RE::NiPoint3        CalculateSubtitleAnchorPos(const RE::SubtitleInfoEx& a_subInfo) const;
-	static RE::NiPoint3 GetSubtitleAnchorPosImpl(const RE::TESObjectREFRPtr& a_ref, float a_height);
+	RE::NiPoint3        CalculateSubtitleAnchorPos(const RE::SubtitleInfoEx& a_subInfo, bool a_log = false) const;
+	static RE::NiPoint3 GetSubtitleAnchorPosImpl(const RE::TESObjectREFRPtr& a_ref, float a_height, bool a_log = false);
 
 	void UpdateSubtitleInfo(RE::SubtitleInfoEx& a_subInfo, bool a_buildOffscreenSubs);
 

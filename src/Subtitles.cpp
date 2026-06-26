@@ -406,6 +406,48 @@ void DualSubtitle::DrawDualSubtitle(const ScreenParams& a_screenParams) const
 	const auto lineHeight = ImGui::GetTextLineHeight();
 	auto [posX, posY] = a_screenParams.pos;
 
+	// Calculate subtitle dimensions to clamp within viewport boundaries
+	float maxWidth = 0.0f;
+	for (const auto& line : primary.lines) {
+		if (line.sizeX > maxWidth) {
+			maxWidth = line.sizeX;
+		}
+	}
+	for (const auto& line : secondary.lines) {
+		if (line.sizeX > maxWidth) {
+			maxWidth = line.sizeX;
+		}
+	}
+
+	float totalLines = static_cast<float>(primary.lines.size());
+	if (!secondary.lines.empty()) {
+		totalLines += static_cast<float>(secondary.lines.size()) + a_screenParams.spacing;
+	}
+	if (!a_screenParams.speakerName.empty() && a_screenParams.alphaPrimary >= 0.01f) {
+		totalLines += 1.0f;
+	}
+	const float totalHeight = totalLines * lineHeight;
+
+	const ImVec2 displaySize = ImGui::GetIO().DisplaySize;
+	const float  paddingX = 20.0f;
+	const float  paddingY = 20.0f;
+
+	const float minX = (maxWidth * 0.5f) + paddingX;
+	const float maxX = displaySize.x - (maxWidth * 0.5f) - paddingX;
+	if (minX < maxX) {
+		posX = std::clamp(posX, minX, maxX);
+	} else {
+		posX = displaySize.x * 0.5f;
+	}
+
+	const float minY = totalHeight + paddingY;
+	const float maxY = displaySize.y - paddingY;
+	if (minY < maxY) {
+		posY = std::clamp(posY, minY, maxY);
+	} else {
+		posY = displaySize.y - paddingY;
+	}
+
 	if (!secondary.lines.empty()) {
 		posY -= lineHeight * a_screenParams.spacing;
 		secondary.DrawSubtitle(posX, posY, a_screenParams.alphaSecondary, lineHeight);

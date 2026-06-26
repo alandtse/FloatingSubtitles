@@ -18,6 +18,7 @@ void OnInit(SKSE::MessagingInterface::Message* a_msg)
 		{
 			logger::info("{:*^30}", "POST POST LOAD");
 			ModAPIHandler::GetSingleton()->LoadAPIs();
+			ImGui::Renderer::Connect();  // ImGuiVRHelper handshake (no-op on flat builds)
 		}
 		break;
 	case SKSE::MessagingInterface::kDataLoaded:
@@ -31,7 +32,6 @@ void OnInit(SKSE::MessagingInterface::Message* a_msg)
 	}
 }
 
-#ifdef SKYRIM_AE
 extern "C" DLLEXPORT constinit auto SKSEPlugin_Version = []() {
 	SKSE::PluginVersionData v;
 	v.PluginVersion(Version::MAJOR);
@@ -39,11 +39,11 @@ extern "C" DLLEXPORT constinit auto SKSEPlugin_Version = []() {
 	v.AuthorName("powerofthree");
 	v.UsesAddressLibrary();
 	v.UsesUpdatedStructs();
-	v.CompatibleVersions({ SKSE::RUNTIME_SSE_LATEST });
+	v.CompatibleVersions({ SKSE::RUNTIME_SSE_1_5_97, SKSE::RUNTIME_SSE_LATEST, SKSE::RUNTIME_VR_1_4_15 });
 
 	return v;
 }();
-#else
+
 extern "C" DLLEXPORT bool SKSEAPI SKSEPlugin_Query(const SKSE::QueryInterface* a_skse, SKSE::PluginInfo* a_info)
 {
 	a_info->infoVersion = SKSE::PluginInfo::kVersion;
@@ -56,14 +56,20 @@ extern "C" DLLEXPORT bool SKSEAPI SKSEPlugin_Query(const SKSE::QueryInterface* a
 	}
 
 	const auto ver = a_skse->RuntimeVersion();
-	if (ver < SKSE::RUNTIME_SSE_1_5_39) {
-		logger::critical(FMT_STRING("Unsupported runtime version {}"), ver.string());
-		return false;
+	if (ver.major() == 1 && ver.minor() == 4) {
+		if (ver < SKSE::RUNTIME_VR_1_4_15) {
+			logger::critical(FMT_STRING("Unsupported VR runtime version {}"), ver.string());
+			return false;
+		}
+	} else {
+		if (ver < SKSE::RUNTIME_SSE_1_5_39) {
+			logger::critical(FMT_STRING("Unsupported SSE runtime version {}"), ver.string());
+			return false;
+		}
 	}
 
 	return true;
 }
-#endif
 
 void InitializeLog()
 {

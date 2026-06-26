@@ -267,8 +267,8 @@ void Manager::CalculateAlphaModifier(RE::SubtitleInfoEx& a_subInfo) const
 		alpha *= 1.0f - cubicEaseOut(t);
 	} else if (auto high = actor->GetHighProcess(); high && high->fadeAlpha < 1.0f) {
 		alpha *= high->fadeAlpha;
-	} else if (actor->IsDead() && actor->voiceTimer < 1.0f) {
-		alpha *= actor->voiceTimer;
+	} else if (actor->IsDead() && actor->GetActorRuntimeData().voiceTimer < 1.0f) {
+		alpha *= actor->GetActorRuntimeData().voiceTimer;
 	}
 
 	a_subInfo.alphaModifier() = std::bit_cast<std::uint32_t>(alpha);
@@ -330,11 +330,11 @@ void Manager::QueueOffscreenSubtitle() const
 			if (auto hudMenu = RE::UI::GetSingleton()->GetMenu<RE::HUDMenu>()) {
 				if (!prevSub.empty()) {
 					RE::GFxValue subtitleText(prevSub);
-					hudMenu->root.Invoke("HideSubtitle", nullptr, &subtitleText, 1);
+					hudMenu->GetRuntimeData().root.Invoke("HideSubtitle", nullptr, &subtitleText, 1);
 				}
 				if (!currentSub.empty()) {
 					RE::GFxValue subtitleText(currentSub);
-					hudMenu->root.Invoke("ShowSubtitle", nullptr, &subtitleText, 1);
+					hudMenu->GetRuntimeData().root.Invoke("ShowSubtitle", nullptr, &subtitleText, 1);
 				}
 			}
 		});
@@ -405,31 +405,51 @@ void Manager::UpdateSubtitleInfo(RE::SubtitleManager* a_manager)
 	}
 }
 
-RE::NiPoint3 Manager::GetSubtitleAnchorPosImpl(const RE::TESObjectREFRPtr& a_ref, float a_height)
+RE::NiPoint3 Manager::GetSubtitleAnchorPosImpl(const RE::TESObjectREFRPtr& a_ref, float a_height, bool a_log)
 {
 	RE::NiPoint3 pos = a_ref->GetPosition();
 	if (const auto headNode = RE::GetHeadNode(a_ref)) {
 		pos = headNode->world.translate;
+		if (a_log) {
+			logger::info("[SubtitlePos] Found head node. world translate: ({:.2f}, {:.2f}, {:.2f})", pos.x, pos.y, pos.z);
+		}
 	} else {
 		pos.z += a_height;
+		if (a_log) {
+			logger::info("[SubtitlePos] Head node NOT found, using fallback height offset. Pos with fallback: ({:.2f}, {:.2f}, {:.2f})", pos.x, pos.y, pos.z);
+		}
 	}
 	return pos;
 }
 
-RE::NiPoint3 Manager::CalculateSubtitleAnchorPos(const RE::SubtitleInfoEx& a_subInfo) const
+RE::NiPoint3 Manager::CalculateSubtitleAnchorPos(const RE::SubtitleInfoEx& a_subInfo, bool a_log) const
 {
 	const auto ref = a_subInfo.speaker.get();
 	const auto height = ref->GetHeight();
 
-	auto pos = GetSubtitleAnchorPosImpl(ref, height);
+	auto pos = GetSubtitleAnchorPosImpl(ref, height, a_log);
 	auto offset = settings.subtitleHeadOffset;
+
+	if (a_log) {
+		logger::info("[SubtitlePos] Speaker: {}, Height: {:.2f}, BasePos: ({:.2f}, {:.2f}, {:.2f})", 
+			ModAPIHandler::GetSingleton()->GetReferenceName(ref), height, ref->GetPosition().x, ref->GetPosition().y, ref->GetPosition().z);
+		logger::info("[SubtitlePos] Head offset config: {:.2f}", settings.subtitleHeadOffset);
+	}
 
 	if (auto overridePosZ = ModAPIHandler::GetSingleton()->GetWidgetPosZ(ref, settings.useBTPSWidgetPosition, settings.useTrueHUDWidgetPosition)) {
 		pos.z = *overridePosZ;
 		offset = settings.subtitleHeadOffset * 0.75f;
+		if (a_log) {
+			logger::info("[SubtitlePos] Widget position overridden, Z: {:.2f}, Adjusted offset: {:.2f}", pos.z, offset);
+		}
 	}
 
-	pos.z += offset * (height / 128.0f);
+	float finalOffset = offset * (height / 128.0f);
+	pos.z += finalOffset;
+
+	if (a_log) {
+		logger::info("[SubtitlePos] Final offset applied: {:.2f}, Calculated anchorPos: ({:.2f}, {:.2f}, {:.2f})", finalOffset, pos.x, pos.y, pos.z);
+	}
 
 	return pos;
 }
@@ -444,8 +464,13 @@ void Manager::Draw()
 
 	RE::BSSpinLockGuard gameLocker(subtitleManager->lock);
 	{
-		ImGui::SetNextWindowPos(ImGui::GetNativeViewportPos());
-		ImGui::SetNextWindowSize(ImGui::GetNativeViewportSize());
+		if (REL::Module::IsVR()) {
+			ImGui::SetNextWindowPos({ 0.0f, 0.0f });
+			ImGui::SetNextWindowSize(ImGui::GetIO().DisplaySize);
+		} else {
+			ImGui::SetNextWindowPos(ImGui::GetNativeViewportPos());
+			ImGui::SetNextWindowSize(ImGui::GetNativeViewportSize());
+		}
 
 		ImGui::Begin("##Main", nullptr, ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoBringToFrontOnFocus);
 		{
@@ -459,6 +484,10 @@ void Manager::Draw()
 
 			auto& subtitleArray = reinterpret_cast<RE::BSTArray<RE::SubtitleInfoEx>&>(subtitleManager->subtitles);
 
+			static std::uint64_t frameCount = 0;
+			frameCount++;
+			bool logThisFrame = (frameCount % 180 == 0);
+
 			for (auto& subInfo : subtitleArray | std::views::reverse) {  // reverse order so closer subtitles get rendered on top
 				if (const auto& ref = subInfo.speaker.get()) {
 					if (inFreeCameraMode) {
@@ -469,8 +498,8 @@ void Manager::Draw()
 						continue;
 					}
 
-					auto anchorPos = CalculateSubtitleAnchorPos(subInfo);
-					auto zDepth = ImGui::WorldToScreenLoc(anchorPos, params.pos);
+					auto anchorPos = CalculateSubtitleAnchorPos(subInfo, logThisFrame);
+					auto zDepth = ImGui::WorldToScreenLoc(anchorPos, params.pos, logThisFrame);
 					if (zDepth < 0.0f) {
 						continue;
 					}

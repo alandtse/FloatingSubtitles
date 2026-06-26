@@ -19,15 +19,37 @@ macro(set_from_environment VARIABLE)
 endmacro()
 
 macro(find_commonlib_path)
-	if (CommonLibName AND NOT ${CommonLibName} STREQUAL "")
-		# Check extern
-		find_path(CommonLibPath
-		include/REL/Relocation.h
-		PATHS extern/${CommonLibName})
-		if (${CommonLibPath} STREQUAL "CommonLibPath-NOTFOUND")
-			#Check path
+	if (NOT DEFINED CommonLibPath OR "${CommonLibPath}" STREQUAL "" OR "${CommonLibPath}" STREQUAL "CommonLibPath-NOTFOUND")
+		if (CommonLibName AND NOT ${CommonLibName} STREQUAL "")
 			set_from_environment(${CommonLibName}Path)
-			set(CommonLibPath ${${CommonLibName}Path})
+			if (DEFINED ${CommonLibName}Path AND NOT "${${CommonLibName}Path}" STREQUAL "" AND EXISTS "${${CommonLibName}Path}/include/REX/REX/Singleton.h")
+				# Also check if it is modern
+				if (EXISTS "${${CommonLibName}Path}/include/RE/G/GameSettingCollection.h")
+					file(READ "${${CommonLibName}Path}/include/RE/G/GameSettingCollection.h" GAME_SETTING_CONTENT)
+					if (GAME_SETTING_CONTENT MATCHES "namespace literals")
+						set(CommonLibPath ${${CommonLibName}Path})
+					endif()
+				endif()
+			endif()
+
+			if (NOT DEFINED CommonLibPath OR "${CommonLibPath}" STREQUAL "" OR "${CommonLibPath}" STREQUAL "CommonLibPath-NOTFOUND")
+				# Check if the local extern path exists and is modern/complete
+				find_path(LocalCommonLibPath
+					include/REL/Relocation.h
+					PATHS extern/${CommonLibName}
+				)
+				if (LocalCommonLibPath AND EXISTS "${LocalCommonLibPath}/include/REX/REX/Singleton.h" AND EXISTS "${LocalCommonLibPath}/include/RE/G/GameSettingCollection.h")
+					file(READ "${LocalCommonLibPath}/include/RE/G/GameSettingCollection.h" GAME_SETTING_CONTENT)
+					if (GAME_SETTING_CONTENT MATCHES "namespace literals")
+						set(CommonLibPath ${LocalCommonLibPath})
+					endif()
+				endif()
+			endif()
+			
+			if (NOT DEFINED CommonLibPath OR "${CommonLibPath}" STREQUAL "" OR "${CommonLibPath}" STREQUAL "CommonLibPath-NOTFOUND" OR "${CommonLibPath}" STREQUAL "LocalCommonLibPath-NOTFOUND")
+				# Fallback to the modern CommonLibVR inside the sandbox
+				set(CommonLibPath "${CMAKE_CURRENT_SOURCE_DIR}/extern/CommonLibVR")
+			endif()
 		endif()
 	endif()
 endmacro()
@@ -44,7 +66,12 @@ if(BUILD_SKYRIMAE)
 elseif(BUILD_SKYRIMVR)
 	add_compile_definitions(SKYRIMVR)
 	add_compile_definitions(_CRT_SECURE_NO_WARNINGS)
-	set(CommonLibName "CommonLibVR")
+	set(CommonLibName "CommonLibSSE")
+	set(CommonLibPath "${CMAKE_CURRENT_SOURCE_DIR}/extern/CommonLibVR")
+	set(BUILD_TESTS OFF CACHE BOOL "" FORCE)
+	set(ENABLE_SKYRIM_SE ON CACHE BOOL "" FORCE)
+	set(ENABLE_SKYRIM_AE ON CACHE BOOL "" FORCE)
+	set(ENABLE_SKYRIM_VR ON CACHE BOOL "" FORCE)
 	set_from_environment(SkyrimVRPath)
 	set(SkyrimPath ${SkyrimVRPath})
 	set(SkyrimVersion "Skyrim VR")
@@ -124,6 +151,10 @@ set(Boost_USE_STATIC_LIBS ON)
 
 # ---- Dependencies ----
 if (DEFINED CommonLibPath AND NOT ${CommonLibPath} STREQUAL "" AND IS_DIRECTORY ${CommonLibPath})
+	set(BUILD_TESTS OFF CACHE BOOL "" FORCE)
+	set(ENABLE_SKYRIM_SE ON CACHE BOOL "" FORCE)
+	set(ENABLE_SKYRIM_AE ON CACHE BOOL "" FORCE)
+	set(ENABLE_SKYRIM_VR ON CACHE BOOL "" FORCE)
 	add_subdirectory(${CommonLibPath} ${CommonLibName})
 else ()
 	message(
@@ -135,6 +166,16 @@ endif()
 find_package(boost_unordered CONFIG REQUIRED)
 find_package(Freetype REQUIRED)
 find_package(imgui CONFIG REQUIRED)
+find_package(nlohmann_json CONFIG REQUIRED)
+
+include(FetchContent)
+FetchContent_Declare(
+	ImGuiVRHelper
+	GIT_REPOSITORY https://github.com/alandtse/imgui-vr-helper.git
+	GIT_TAG        v1.1.0
+	SOURCE_SUBDIR  api
+)
+FetchContent_MakeAvailable(ImGuiVRHelper)
 
 find_path(CLIB_UTIL_INCLUDE_DIRS "ClibUtil/utils.hpp")
 find_path(SRELL_INCLUDE_DIRS "srell.hpp")
@@ -183,7 +224,6 @@ target_compile_definitions(
 	PRIVATE
 		_UNICODE
 )
-
 target_include_directories(
 	${PROJECT_NAME}
 	PRIVATE
@@ -199,6 +239,8 @@ target_link_libraries(
 		Boost::unordered
 		Freetype::Freetype
 		imgui::imgui
+		ImGuiVRHelper::api
+		nlohmann_json::nlohmann_json
 )
 
 target_precompile_headers(
@@ -245,7 +287,7 @@ if (COPY_BUILD)
 	else ()
 		message(
 			WARNING
-			"Variable ${SkyrimPath} is not defined. Skipping post-build copy command."
+			"Variable SkyrimPath is not defined. Skipping post-build copy command."
 		)
 	endif ()
 endif ()

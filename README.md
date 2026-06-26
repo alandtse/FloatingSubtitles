@@ -1,6 +1,8 @@
 # Floating Subtitles
 
 SKSE plugin that adds floating subtitles over NPCs
+[SSE/AE](https://www.nexusmods.com/skyrimspecialedition/mods/154424)
+[VR](https://www.nexusmods.com/skyrimspecialedition/mods/61734)
 
 ## Requirements
 * [CMake](https://cmake.org/)
@@ -13,6 +15,14 @@ SKSE plugin that adds floating subtitles over NPCs
 * [CommonLibSSE](https://github.com/powerof3/CommonLibSSE/tree/dev)
 	* You need to build from the powerof3/dev branch
 	* Add this as as an environment variable `CommonLibSSEPath`
+* [CommonLibVR](https://github.com/alandtse/CommonLibVR/tree/vr)
+	* Add this as as an environment variable `CommonLibVRPath` instead of /external
+
+## User Requirements
+* [Address Library for SKSE](https://www.nexusmods.com/skyrimspecialedition/mods/32444)
+	* Needed for SSE/AE
+* [VR Address Library for SKSEVR](https://www.nexusmods.com/skyrimspecialedition/mods/58101)
+	* Needed for VR
 
 ## Register Visual Studio as a Generator
 * Open `x64 Native Tools Command Prompt`
@@ -38,6 +48,11 @@ cmake --build build --config Release
 ```
 cmake --preset vs2022-windows-vcpkg-ae
 cmake --build buildae --config Release
+```
+### VR
+```
+cmake --preset vs2022-windows-vcpkg-vr
+cmake --build buildvr --config Release
 ```
 ## License
 [MIT](LICENSE)

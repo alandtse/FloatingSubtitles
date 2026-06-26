@@ -121,12 +121,19 @@ namespace stl
 
 		return enum_range;
 	};
+
+	inline bool IsVR()
+	{
+#if defined(SKYRIMVR)
+		return true;
+#elif defined(SKYRIM_SUPPORT_VR)
+		return REL::Module::IsVR();
+#else
+		return false;
+#endif
+	}
 }
 
-#ifdef SKYRIM_AE
-#	define OFFSET(se, ae) ae
-#else
-#	define OFFSET(se, ae) se
-#endif
+#define OFFSET(se, ae) REL::VariantOffset(se, ae, se)
 
 #include "Version.h"

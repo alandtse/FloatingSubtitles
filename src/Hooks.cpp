@@ -71,7 +71,9 @@ namespace Hooks
 		{
 			if (a_message.type == RE::UI_MESSAGE_TYPE::kUpdate) {
 				if (auto dialogueData = static_cast<RE::BSUIMessageData*>(a_message.data)) {
-					if (dialogueData->fixedStr == RE::InterfaceStrings::GetSingleton()->showText && Manager::GetSingleton()->HandlesDialogueSubtitles()) {
+					auto interfaceStrings = RE::InterfaceStrings::GetSingleton();
+					const auto& showText = REL::Module::IsVR() ? interfaceStrings->GetVRRuntimeData().showText : interfaceStrings->GetRuntimeData().showText;
+					if (dialogueData->fixedStr == showText && Manager::GetSingleton()->HandlesDialogueSubtitles()) {
 						return RE::UI_MESSAGE_RESULTS::kIgnore;
 					}
 				}
