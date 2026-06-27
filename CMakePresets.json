@@ -42,17 +42,17 @@
     {
       "name": "base",
       "hidden": true,
-      "inherits": [ "cmake-dev", "vcpkg", "windows" ]
+      "inherits": ["cmake-dev", "vcpkg", "windows"]
     },
     {
       "name": "vs2022",
-      "inherits": [ "base" ],
+      "inherits": ["base"],
       "generator": "Visual Studio 17 2022",
       "toolset": "v143"
     },
     {
       "name": "vs2026",
-      "inherits": [ "base" ],
+      "inherits": ["base"],
       "generator": "Visual Studio 18 2026",
       "toolset": "v145"
     }

@@ -42,7 +42,7 @@ macro(find_commonlib_path)
 					endif()
 				endif()
 			endif()
-			
+
 			if (NOT DEFINED CommonLibPath OR "${CommonLibPath}" STREQUAL "" OR "${CommonLibPath}" STREQUAL "CommonLibPath-NOTFOUND" OR "${CommonLibPath}" STREQUAL "LocalCommonLibPath-NOTFOUND")
 				# Fallback to the modern CommonLibVR inside the sandbox
 				set(CommonLibPath "${CMAKE_CURRENT_SOURCE_DIR}/extern/CommonLibVR")

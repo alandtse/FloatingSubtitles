@@ -3,7 +3,7 @@
   "modName": "FloatingSubtitles",
   "displayName": "$FSUB_Title_Text",
   "minMcmVersion": 13,
-  "pluginRequirements": [ "FloatingSubtitles.esp" ],
+  "pluginRequirements": ["FloatingSubtitles.esp"],
   "cursorFillMode": "topToBottom",
   "pages": [
     {
