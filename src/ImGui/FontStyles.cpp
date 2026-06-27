@@ -82,7 +82,10 @@ namespace ImGui
 
 		colors[ImGuiCol_Text] = user.text;
 		style.Colors[ImGuiCol_TextShadowDisabled] = user.shadowText;
-		style.TextShadowOffset = { 2.0, 2.0 };
+		// Honor the configured fTextShadowOffset directly (0 disables it). The shadow
+		// is a thin readability outline, so it is not scaled up with the VR font —
+		// scaling made it read as a separate offset copy.
+		style.TextShadowOffset = { user.shadowOffsetVar, user.shadowOffsetVar };
 
 		// load fonts
 		SettingLoader::GetSingleton()->Load(FileType::kFonts, [&](auto& ini) {
