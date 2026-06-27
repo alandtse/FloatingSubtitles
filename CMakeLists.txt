@@ -1,7 +1,10 @@
 cmake_minimum_required(VERSION 3.20)
 set(NAME "po3_FloatingSubtitles" CACHE STRING "")
 set(VERSION 3.3.3 CACHE STRING "")
-set(VR_VERSION 1)
+# VR variant counter appended as the 4th version part. 0 = base (Nexus shows the
+# 3-part upstream version); bump to 1+ for a re-release on the same upstream base
+# (Nexus then shows all 4 parts).
+set(VR_VERSION 0)
 
 # ---- Options ----
 

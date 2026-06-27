@@ -94,9 +94,9 @@ jobs:
             echo "::error::Tag '$tag' (version $version) != CMake version $expected (VERSION.VR_VERSION). Bump VR_VERSION/VERSION or fix the tag." >&2
             exit 1
           fi
-          # Nexus shows the 3-digit upstream version by default; the trailing VR `.1`
-          # is dropped. A re-release on the same base (.2+) keeps all four digits.
-          nexus_version="${version%.1}"
+          # Nexus shows the 3-part upstream version for the base build; the trailing VR
+          # `.0` is dropped. A re-release on the same base (.1+) keeps all four parts.
+          nexus_version="${version%.0}"
           {
             echo "tag=$tag"
             echo "version=$version"
