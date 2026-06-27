@@ -494,10 +494,15 @@ void Manager::Draw()
 			frameCount++;
 			bool logThisFrame = settings.debugLog && (frameCount % 180 == 0);
 
+			// The custom scroll timer runs on real time, so freeze it when the game
+			// pauses (menus/console) to match the game-driven subtitle timers.
+			const bool gameTimeFrozen = RE::Main::GetSingleton()->GetRuntimeData().freezeTime;
+
 			static FlatMap<RE::FormID, float> maxDurations;
 			struct CustomTimer
 			{
-				std::chrono::steady_clock::time_point startTime;
+				std::chrono::steady_clock::time_point lastUpdate;
+				float                                 elapsed;
 				float                                 duration;
 			};
 			static FlatMap<RE::FormID, CustomTimer> customSubtitleTimers;
@@ -579,13 +584,16 @@ void Manager::Draw()
 						auto it = customSubtitleTimers.find(formID);
 						if (it == customSubtitleTimers.end()) {
 							float calcDuration = 2.0f + 0.05f * subInfo.subtitle.length();
-							customSubtitleTimers[formID] = { now, calcDuration };
+							customSubtitleTimers[formID] = { now, 0.0f, calcDuration };
 							duration = calcDuration;
 							elapsedTime = 0.0f;
 						} else {
+							if (!gameTimeFrozen) {
+								it->second.elapsed += std::chrono::duration<float>(now - it->second.lastUpdate).count();
+							}
+							it->second.lastUpdate = now;
 							duration = it->second.duration;
-							elapsedTime = std::chrono::duration<float>(now - it->second.startTime).count();
-							elapsedTime = std::clamp(elapsedTime, 0.0f, duration);
+							elapsedTime = std::clamp(it->second.elapsed, 0.0f, duration);
 						}
 
 						if (logThisFrame && duration > 0.0f) {
