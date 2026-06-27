@@ -47,16 +47,7 @@ namespace RE
 	bool IsCrosshairRef(const TESObjectREFRPtr& a_ref)
 	{
 		auto crosshairPick = CrosshairPickData::GetSingleton();
-		if (!crosshairPick) {
-			return false;
-		}
-		if (REL::Module::IsVR()) {
-			return crosshairPick->target[VR_DEVICE::kLeftController].get() == a_ref
-				|| crosshairPick->target[VR_DEVICE::kRightController].get() == a_ref
-				|| crosshairPick->target[VR_DEVICE::kHeadset].get() == a_ref;
-		} else {
-			return crosshairPick->target[0].get() == a_ref;
-		}
+		return crosshairPick && crosshairPick->GetActiveTarget().get() == a_ref;
 	}
 
 	NiAVObject* GetHeadNode(const TESObjectREFRPtr& a_ref)

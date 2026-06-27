@@ -55,11 +55,8 @@ void RayCaster::StartPoint::Init()
 	debug = player->GetPosition();
 	debug.z += player->GetInfoRuntimeData().eyeHeight;
 
-	if (auto worldRoot = RE::Main::WorldRootNode(); !worldRoot->GetChildren().empty()) {
-		camera = worldRoot->GetChildren().front()->local.translate;
-	} else if (auto pcCamera = RE::PlayerCamera::GetSingleton(); pcCamera && pcCamera->cameraRoot) {
-		camera = pcCamera->cameraRoot->world.translate;
-	} else {
+	camera = RE::PlayerCamera::GetActiveCameraPosition();
+	if (camera == RE::NiPoint3::Zero()) {
 		camera = debug;
 	}
 }
