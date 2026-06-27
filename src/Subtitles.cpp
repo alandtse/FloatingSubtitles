@@ -461,7 +461,7 @@ void DualSubtitle::DrawDualSubtitle(const ScreenParams& a_screenParams) const
 		}
 	}
 
-	bool isScrolling = Manager::GetSingleton()->GetSettings().scrollSubtitles && a_screenParams.duration > 0.0f;
+	bool  isScrolling = Manager::GetSingleton()->GetSettings().scrollSubtitles && a_screenParams.duration > 0.0f;
 	float primaryLines = (primary.lines.size() > 1 && isScrolling) ? 1.0f : static_cast<float>(primary.lines.size());
 	float secondaryLines = (secondary.lines.size() > 1 && isScrolling) ? 1.0f : static_cast<float>(secondary.lines.size());
 

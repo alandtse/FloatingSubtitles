@@ -1,9 +1,8 @@
 #include "Renderer.h"
 
-#include <fstream>
 #include "ImGui/FontStyles.h"
-#include "Manager.h"
 #include "ImGuiVRHelperClientSDK.h"
+#include "Manager.h"
 
 namespace ImGui::Renderer
 {
@@ -115,8 +114,8 @@ namespace ImGui::Renderer
 				}
 
 				static const auto screenSize = RE::BSGraphics::Renderer::GetScreenSize();
-				const ImVec2 displaySize{ static_cast<float>(screenSize.width),
-					static_cast<float>(screenSize.height) };
+				const ImVec2      displaySize{ static_cast<float>(screenSize.width),
+                    static_cast<float>(screenSize.height) };
 
 				g_vrClient.RenderHud(g_d3dDevice, g_d3dContext, displaySize, []() {
 					// disable windowing

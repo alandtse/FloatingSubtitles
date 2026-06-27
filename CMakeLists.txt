@@ -224,6 +224,7 @@ target_compile_definitions(
 	PRIVATE
 		_UNICODE
 )
+
 target_include_directories(
 	${PROJECT_NAME}
 	PRIVATE

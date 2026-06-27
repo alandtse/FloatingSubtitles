@@ -49,12 +49,6 @@ namespace RE
 		static void read_uint32(std::uint32_t& val, const std::vector<std::byte>& a_buffer, std::uint32_t& a_bufferPosition);
 	};
 
-	class NiMatrix44
-	{
-	public:
-		float entry[4][4];
-	};
-
 	class SubtitleInfoEx : public SubtitleInfo
 	{
 	public:

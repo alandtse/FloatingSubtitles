@@ -492,12 +492,13 @@ void Manager::Draw()
 
 			static std::uint64_t frameCount = 0;
 			frameCount++;
-			bool logThisFrame = (frameCount % 180 == 0);
+			bool logThisFrame = settings.debugLog && (frameCount % 180 == 0);
 
 			static FlatMap<RE::FormID, float> maxDurations;
-			struct CustomTimer {
+			struct CustomTimer
+			{
 				std::chrono::steady_clock::time_point startTime;
-				float duration;
+				float                                 duration;
 			};
 			static FlatMap<RE::FormID, CustomTimer> customSubtitleTimers;
 			for (auto& subInfo : subtitleArray | std::views::reverse) {  // reverse order so closer subtitles get rendered on top
@@ -608,8 +609,8 @@ void Manager::Draw()
 					}
 
 					// Check if there is a closer speaker in between (similar angular direction)
-					bool closerSpeakerInBetween = false;
-					auto playerLoc = RE::PlayerCharacter::GetSingleton()->GetPosition();
+					bool         closerSpeakerInBetween = false;
+					auto         playerLoc = RE::PlayerCharacter::GetSingleton()->GetPosition();
 					RE::NiPoint3 dirDistant = ref->GetPosition() - playerLoc;
 					dirDistant.Unitize();
 

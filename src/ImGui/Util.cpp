@@ -1,6 +1,6 @@
 #include "Util.h"
-#include "Renderer.h"
 #include "RE.h"
+#include "Renderer.h"
 
 namespace ImGui
 {
@@ -15,8 +15,8 @@ namespace ImGui
 	float WorldToScreenLoc(const RE::NiPoint3& worldLocIn, ImVec2& screenLocOut, bool a_log)
 	{
 		float zVal = -1.0f;
-		auto camera = RE::Main::WorldRootCamera();
-		bool projected = false;
+		auto  camera = RE::Main::WorldRootCamera();
+		bool  projected = false;
 
 		if (camera) {
 			if (REL::Module::IsVR()) {
@@ -36,8 +36,7 @@ namespace ImGui
 					screenLocOut.x,
 					screenLocOut.y,
 					zVal,
-					1e-5f
-				);
+					1e-5f);
 			} else {
 				projected = camera->WorldPtToScreenPt3(worldLocIn, screenLocOut.x, screenLocOut.y, zVal, 1e-5f);
 			}

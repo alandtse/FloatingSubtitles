@@ -73,7 +73,7 @@ extern "C" DLLEXPORT bool SKSEAPI SKSEPlugin_Query(const SKSE::QueryInterface* a
 	return true;
 }
 #else
-#ifdef SKYRIM_AE
+#	ifdef SKYRIM_AE
 extern "C" DLLEXPORT constinit auto SKSEPlugin_Version = []() {
 	SKSE::PluginVersionData v;
 	v.PluginVersion(Version::MAJOR);
@@ -85,7 +85,7 @@ extern "C" DLLEXPORT constinit auto SKSEPlugin_Version = []() {
 
 	return v;
 }();
-#else
+#	else
 extern "C" DLLEXPORT bool SKSEAPI SKSEPlugin_Query(const SKSE::QueryInterface* a_skse, SKSE::PluginInfo* a_info)
 {
 	a_info->infoVersion = SKSE::PluginInfo::kVersion;
@@ -98,21 +98,21 @@ extern "C" DLLEXPORT bool SKSEAPI SKSEPlugin_Query(const SKSE::QueryInterface* a
 	}
 
 	const auto ver = a_skse->RuntimeVersion();
-#ifdef SKYRIMVR
+#		ifdef SKYRIMVR
 	if (ver < SKSE::RUNTIME_VR_1_4_15) {
 		logger::critical(FMT_STRING("Unsupported VR runtime version {}"), ver.string());
 		return false;
 	}
-#else
+#		else
 	if (ver < SKSE::RUNTIME_SSE_1_5_39) {
 		logger::critical(FMT_STRING("Unsupported runtime version {}"), ver.string());
 		return false;
 	}
-#endif
+#		endif
 
 	return true;
 }
-#endif
+#	endif
 #endif
 
 void InitializeLog()
@@ -127,7 +127,7 @@ void InitializeLog()
 
 	auto log = std::make_shared<spdlog::logger>("global log"s, std::move(sink));
 
-	bool debugLog = false;
+	bool        debugLog = false;
 	CSimpleIniA ini;
 	ini.SetUnicode();
 	if (ini.LoadFile(L"Data/MCM/Settings/FloatingSubtitles.ini") >= SI_OK) {

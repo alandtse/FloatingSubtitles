@@ -2,8 +2,8 @@
 
 namespace ImGui::Renderer
 {
-	void Install();
-	void Connect();
+	void  Install();
+	void  Connect();
 	float GetHUDCoverage();
 
 	// members

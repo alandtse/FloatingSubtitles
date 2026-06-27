@@ -153,7 +153,7 @@ std::optional<float> ModAPIHandler::GetWidgetPosZ(const RE::TESObjectREFRPtr& a_
 float ModAPIHandler::GetResolutionScale() const
 {
 	if (REL::Module::IsVR()) {
-		return 2.0f; // Stable default for VR HUD scaling
+		return 2.0f;  // Stable default for VR HUD scaling
 	}
 	return displayTweaks.GetResolutionScale();
 }
