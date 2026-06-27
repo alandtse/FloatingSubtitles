@@ -28,6 +28,9 @@ on:
         description: "Nexus file name (without extension)."
         required: false
         default: "Floating Subtitles"
+      mod_version:
+        description: "Nexus version to publish. Defaults to the tag without 'v'."
+        required: false
       dry_run:
         description: "If true, only report the planned upload; never upload."
         required: false
@@ -54,6 +57,10 @@ on:
         required: false
         type: string
         default: "Floating Subtitles"
+      mod_version:
+        required: false
+        type: string
+        default: ""
       dry_run:
         required: false
         type: string
@@ -89,6 +96,7 @@ jobs:
         env:
           INPUT_TAG: ${{ inputs.tag }}
           INPUT_MOD_ID: ${{ inputs.nexus_mod_id || '183714' }}
+          INPUT_MOD_VERSION: ${{ inputs.mod_version }}
           INPUT_DRY_RUN: ${{ inputs.dry_run }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -111,9 +119,12 @@ jobs:
             echo "::error::nexus_mod_id is required for a real upload." >&2
             exit 1
           fi
+          # Nexus version defaults to the tag without 'v'; callers override (e.g. to drop
+          # the trailing VR tweak digit so Nexus shows the 3-digit upstream version).
+          VERSION="${INPUT_MOD_VERSION:-${TAG#v}}"
           {
             echo "tag=$TAG"
-            echo "version=${TAG#v}"
+            echo "version=$VERSION"
             echo "dry_run=$DRY_RUN"
             echo "mod_id=$INPUT_MOD_ID"
           } >> "$GITHUB_OUTPUT"

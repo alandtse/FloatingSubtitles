@@ -79,6 +79,7 @@ jobs:
     outputs:
       tag: ${{ steps.v.outputs.tag }}
       version: ${{ steps.v.outputs.version }}
+      nexus_version: ${{ steps.v.outputs.nexus_version }}
     steps:
       - uses: actions/checkout@v4
       - id: v
@@ -93,9 +94,13 @@ jobs:
             echo "::error::Tag '$tag' (version $version) != CMake version $expected (VERSION.VR_VERSION). Bump VR_VERSION/VERSION or fix the tag." >&2
             exit 1
           fi
+          # Nexus shows the 3-digit upstream version by default; the trailing VR `.1`
+          # is dropped. A re-release on the same base (.2+) keeps all four digits.
+          nexus_version="${version%.1}"
           {
             echo "tag=$tag"
             echo "version=$version"
+            echo "nexus_version=$nexus_version"
           } >> "$GITHUB_OUTPUT"
 
   package:
@@ -118,7 +123,7 @@ jobs:
         id: pkg
         run: |
           set -euo pipefail
-          ver="${{ needs.verify.outputs.version }}"
+          ver="${{ needs.verify.outputs.nexus_version }}"
           # Hyphenated archive name (no spaces) for safe handling downstream; the Nexus
           # display name is set separately via mod_filename.
           stage="Floating-Subtitles-VR-${ver}"
@@ -151,6 +156,7 @@ jobs:
     uses: ./.github/workflows/nexus-upload.yaml
     with:
       tag: ${{ needs.verify.outputs.tag }}
+      mod_version: ${{ needs.verify.outputs.nexus_version }}
       dry_run: ${{ vars.NEXUS_AUTO_UPLOAD == 'true' && 'false' || 'true' }}
     secrets:
       UNEX_NEXUSMODS_SESSION_COOKIE: ${{ secrets.UNEX_NEXUSMODS_SESSION_COOKIE }}
