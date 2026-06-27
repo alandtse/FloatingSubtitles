@@ -62,7 +62,8 @@ namespace ImGui::Renderer
 				const auto context = reinterpret_cast<ID3D11DeviceContext*>(renderer->GetRuntimeData().context);
 
 				if (REL::Module::IsVR()) {
-					logger::info("D3D initialized — VR subtitle rendering via ImGuiVRHelper."sv);
+					const auto ss = RE::BSGraphics::Renderer::GetScreenSize();
+					logger::info("D3D initialized — VR subtitle rendering via ImGuiVRHelper. ScreenSize {}x{}", ss.width, ss.height);
 
 					// Store device/context so PostDisplay can call RenderHud
 					g_d3dDevice = device;
