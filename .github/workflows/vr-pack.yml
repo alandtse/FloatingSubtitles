@@ -36,9 +36,14 @@ jobs:
         with:
           submodules: recursive
 
-      # vcpkg ships on the runner with VCPKG_ROOT preset. Manifest-mode packages are
-      # restored from the binary archive cache keyed on the manifest, so only a
-      # dependency bump triggers a full rebuild of the static deps.
+      # The runner ships vcpkg but exposes it as VCPKG_INSTALLATION_ROOT; the preset's
+      # toolchain reads VCPKG_ROOT, so bridge them.
+      - name: Set VCPKG_ROOT
+        shell: pwsh
+        run: echo "VCPKG_ROOT=$env:VCPKG_INSTALLATION_ROOT" >> $env:GITHUB_ENV
+
+      # Manifest-mode packages are restored from the binary archive cache keyed on the
+      # manifest, so only a dependency bump triggers a full rebuild of the static deps.
       - name: Cache vcpkg binary archives
         uses: actions/cache@v4
         with:
