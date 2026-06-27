@@ -4,13 +4,18 @@ on:
   push:
     branches: '**'
     tags: '*'
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
+  # The fork and upstream build different targets from the same trigger, selected by
+  # owner: powerof3 ships SE/AE single-runtime via pack-skse-mod; alandtse ships the
+  # VR multiruntime. Each builds on push and releases on a version tag.
   run:
+    if: github.repository_owner == 'powerof3'
     uses: powerof3/pack-skse-mod/.github/workflows/pack.yml@main-vs2022
     with:
       CMAKE_SE_CONFIG_PRESET: 'vs2022-se'
@@ -34,3 +39,10 @@ jobs:
       FOMOD_AE_MIN_GAME_VERSION: '1.6.1130.0'
       FOMOD_REQUIRED_INSTALLATION_DIR: "Skyrim/Data"
       PUBLISH_ARCHIVE_TYPE: '7z'
+
+  vr:
+    if: github.repository_owner == 'alandtse'
+    permissions:
+      contents: write # vr-pack creates the GitHub Release on a tag
+    uses: ./.github/workflows/vr-pack.yml
+    secrets: inherit
