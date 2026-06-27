@@ -269,8 +269,12 @@ if (COPY_BUILD)
 			add_custom_command(
 				TARGET ${PROJECT_NAME}
 				POST_BUILD
+				# Deploy the plugin plus the mod's Data assets (MCM config, translations,
+				# esp, scripts) so a dev build fully refreshes the install — not just the DLL.
+				COMMAND ${CMAKE_COMMAND} -E make_directory "${game_path}/SKSE/Plugins"
 				COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:${PROJECT_NAME}> "${game_path}/SKSE/Plugins/"
 				COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_PDB_FILE:${PROJECT_NAME}> "${game_path}/SKSE/Plugins/"
+				COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/Skyrim/Data" "${game_path}"
 			)
 			set(deployed TRUE)
 		endif ()
