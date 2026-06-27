@@ -119,9 +119,11 @@ jobs:
             echo "::error::nexus_mod_id is required for a real upload." >&2
             exit 1
           fi
-          # Nexus version defaults to the tag without 'v'; callers override (e.g. to drop
-          # the trailing VR tweak digit so Nexus shows the 3-digit upstream version).
+          # Nexus version defaults to the tag without 'v'; callers may override. Strip the
+          # trailing VR base `.0` so manual dispatches (no mod_version) also show the
+          # 3-part upstream version, matching the release pipeline.
           VERSION="${INPUT_MOD_VERSION:-${TAG#v}}"
+          VERSION="${VERSION%.0}"
           {
             echo "tag=$TAG"
             echo "version=$VERSION"
