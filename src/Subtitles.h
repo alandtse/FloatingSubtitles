@@ -28,7 +28,7 @@ struct Subtitle
 	void WrapText();
 	void Invalidate();
 
-	void DrawSubtitle(float a_posX, float& a_posY, float a_alpha, float a_lineHeight, float a_elapsedTime = 0.0f, float a_duration = 0.0f) const;
+	void DrawSubtitle(float a_posX, float& a_posY, float a_alpha, float a_lineHeight, float a_fontScale, float a_elapsedTime = 0.0f, float a_duration = 0.0f) const;
 
 	std::vector<Line> lines{};
 	std::string       fullLine{};

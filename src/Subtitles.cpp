@@ -19,6 +19,7 @@ void Subtitle::WrapTextImpl()
 	lines.clear();
 
 	const auto& [text, maxChars, lang] = cached;
+	// VR's curved HUD shows fewer characters comfortably, so cap wide wrap widths at 45.
 	std::uint32_t maxLineWidth = stl::IsVR() ? (maxChars >= 80 ? 45 : maxChars) : maxChars;
 
 	if (IsTextCJK(text)) {
@@ -355,7 +356,7 @@ void Subtitle::Invalidate()
 	isWrapped = false;
 }
 
-void Subtitle::DrawSubtitle(float a_posX, float& a_posY, float a_alpha, float a_lineHeight, float a_elapsedTime, float a_duration) const
+void Subtitle::DrawSubtitle(float a_posX, float& a_posY, float a_alpha, float a_lineHeight, float a_fontScale, float a_elapsedTime, float a_duration) const
 {
 	if (a_alpha < 0.01f) {
 		return;
@@ -367,12 +368,14 @@ void Subtitle::DrawSubtitle(float a_posX, float& a_posY, float a_alpha, float a_
 
 	ImGui::PushStyleVar(ImGuiStyleVar_Alpha, a_alpha);
 
-	const auto draw_single_line = [a_posX, a_lineHeight](const Line& line, float yPos, float lineAlpha) {
+	// Cached word/line widths were measured unscaled at wrap time; scale them to match
+	// the SetWindowFontScale applied for rendering so spacing/centering stays correct.
+	const auto draw_single_line = [a_posX, a_fontScale](const Line& line, float yPos, float lineAlpha) {
 		if (lineAlpha < 0.01f) {
 			return;
 		}
 		ImGui::PushStyleVar(ImGuiStyleVar_Alpha, lineAlpha);
-		float currentX = a_posX - (line.sizeX * 0.5f);
+		float currentX = a_posX - (line.sizeX * 0.5f * a_fontScale);
 		for (const auto& word : line.words) {
 			if (word.isDragonFont) {
 				ImGui::FontStyles::GetSingleton()->PushDragonFont();
@@ -385,7 +388,7 @@ void Subtitle::DrawSubtitle(float a_posX, float& a_posY, float a_alpha, float a_
 			if (word.isDragonFont) {
 				ImGui::PopFont();
 			}
-			currentX += word.size.x;
+			currentX += word.size.x * a_fontScale;
 		}
 		ImGui::PopStyleVar();
 	};
@@ -460,6 +463,7 @@ void DualSubtitle::DrawDualSubtitle(const ScreenParams& a_screenParams) const
 			maxWidth = line.sizeX;
 		}
 	}
+	maxWidth *= a_screenParams.fontScale;  // cached widths are unscaled; match the render scale
 
 	bool  isScrolling = Manager::GetSingleton()->GetSettings().scrollSubtitles && a_screenParams.duration > 0.0f;
 	float primaryLines = (primary.lines.size() > 1 && isScrolling) ? 1.0f : static_cast<float>(primary.lines.size());
@@ -496,10 +500,10 @@ void DualSubtitle::DrawDualSubtitle(const ScreenParams& a_screenParams) const
 
 	if (!secondary.lines.empty()) {
 		posY -= lineHeight * a_screenParams.spacing;
-		secondary.DrawSubtitle(posX, posY, a_screenParams.alphaSecondary, lineHeight, a_screenParams.elapsedTime, a_screenParams.duration);
+		secondary.DrawSubtitle(posX, posY, a_screenParams.alphaSecondary, lineHeight, a_screenParams.fontScale, a_screenParams.elapsedTime, a_screenParams.duration);
 	}
 
-	primary.DrawSubtitle(posX, posY, a_screenParams.alphaPrimary, lineHeight, a_screenParams.elapsedTime, a_screenParams.duration);
+	primary.DrawSubtitle(posX, posY, a_screenParams.alphaPrimary, lineHeight, a_screenParams.fontScale, a_screenParams.elapsedTime, a_screenParams.duration);
 
 	if (!a_screenParams.speakerName.empty() && a_screenParams.alphaPrimary >= 0.01f) {
 		posY -= lineHeight;
