@@ -180,7 +180,9 @@ jobs:
       mod_version: ${{ needs.prepare.outputs.version }}
       mod_filename: ${{ inputs.mod_filename || 'Floating Subtitles' }}
       changelog: ${{ needs.prepare.outputs.changelog }}
-      file_description: "VR build. Requires VR Address Library and ImGui VR Helper. PDB is for crash debugging and can be removed."
+      file_description: |
+        See Description → Requirements for installation instructions.
+        PDB is for crash debugging and can be removed.
       check_existing: true
     secrets:
       UNEX_NEXUSMODS_SESSION_COOKIE: ${{ secrets.UNEX_NEXUSMODS_SESSION_COOKIE }}
