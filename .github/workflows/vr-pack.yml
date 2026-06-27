@@ -27,7 +27,8 @@ permissions:
 jobs:
   build:
     name: Build (CMake · vs2022 · Release)
-    runs-on: windows-2025
+    # windows-2025 ships VS2026, not VS2022; the vs2022 preset needs the 2022 generator.
+    runs-on: windows-2022
     outputs:
       artifact-name: floating-subtitles-vr-binaries
     steps:
