@@ -500,6 +500,7 @@ void Manager::Draw()
 			const bool gameTimeFrozen = RE::Main::GetSingleton()->GetRuntimeData().freezeTime;
 
 			static FlatMap<RE::FormID, float> maxDurations;
+			static FlatMap<RE::FormID, float> silentDurations;
 			struct CustomTimer
 			{
 				std::chrono::steady_clock::time_point lastUpdate;
@@ -507,6 +508,9 @@ void Manager::Draw()
 				float                                 duration;
 			};
 			static FlatMap<RE::FormID, CustomTimer> customSubtitleTimers;
+
+			const auto playerLoc = RE::PlayerCharacter::GetSingleton()->GetPosition();
+
 			for (auto& subInfo : subtitleArray | std::views::reverse) {  // reverse order so closer subtitles get rendered on top
 				if (const auto& ref = subInfo.speaker.get()) {
 					if (inFreeCameraMode) {
@@ -542,9 +546,8 @@ void Manager::Draw()
 						}
 
 						if (duration <= 0.0f) {
-							static FlatMap<RE::FormID, float> silentDurations;
-							auto                              formID = ref->GetFormID();
-							auto                              it = silentDurations.find(formID);
+							auto formID = ref->GetFormID();
+							auto it = silentDurations.find(formID);
 							if (it == silentDurations.end() || remaining > it->second) {
 								silentDurations[formID] = remaining;
 								duration = remaining;
@@ -584,6 +587,7 @@ void Manager::Draw()
 						auto now = std::chrono::steady_clock::now();
 						auto it = customSubtitleTimers.find(formID);
 						if (it == customSubtitleTimers.end()) {
+							// No game timer for this subtitle; estimate read time: ~2s base + 50ms/char.
 							float calcDuration = 2.0f + 0.05f * subInfo.subtitle.length();
 							customSubtitleTimers[formID] = { now, 0.0f, calcDuration };
 							duration = calcDuration;
@@ -606,20 +610,21 @@ void Manager::Draw()
 					params.elapsedTime = elapsedTime;
 					params.duration = duration;
 
-					// Distance-based font scaling
-					float distance = std::sqrt(subInfo.targetDistance);
-					float fontScale = 1.0f;
-					float maxDist = std::sqrt(maxDistanceStartSq);
-					if (maxDist > 200.0f) {
-						if (distance > 200.0f) {
-							fontScale = 1.0f - ((distance - 200.0f) / (maxDist - 200.0f)) * 0.5f;
-							fontScale = std::clamp(fontScale, 0.5f, 1.0f);
-						}
+					// Distance-based font scaling: full size within kFontScaleStartDistance,
+					// shrinking to (1 - kMaxFontScaleReduction) at the max subtitle distance.
+					constexpr float kFontScaleStartDistance = 200.0f;
+					constexpr float kMaxFontScaleReduction = 0.5f;
+					float           distance = std::sqrt(subInfo.targetDistance);
+					float           fontScale = 1.0f;
+					float           maxDist = std::sqrt(maxDistanceStartSq);
+					if (maxDist > kFontScaleStartDistance && distance > kFontScaleStartDistance) {
+						fontScale = 1.0f - ((distance - kFontScaleStartDistance) / (maxDist - kFontScaleStartDistance)) * kMaxFontScaleReduction;
+						fontScale = std::clamp(fontScale, 1.0f - kMaxFontScaleReduction, 1.0f);
 					}
 
-					// Check if there is a closer speaker in between (similar angular direction)
+					// Shrink a distant speaker's subtitle further when a closer speaker sits
+					// within ~25 degrees of the same direction, to reduce overlap.
 					bool         closerSpeakerInBetween = false;
-					auto         playerLoc = RE::PlayerCharacter::GetSingleton()->GetPosition();
 					RE::NiPoint3 dirDistant = ref->GetPosition() - playerLoc;
 					dirDistant.Unitize();
 
@@ -649,34 +654,32 @@ void Manager::Draw()
 
 					if (logThisFrame) {
 						logger::debug("[Manager::Draw] Speaker '{}' distance={:.1f}, fontScale={:.2f}, inBetween={}",
-							ModAPIHandler::GetSingleton()->GetReferenceName(ref), distance, fontScale, closerSpeakerInBetween);
+							ModAPIHandler::GetSingleton()->GetReferenceName(ref), distance, params.fontScale, closerSpeakerInBetween);
 					}
 
 					DrawProcessedSubtitle(subInfo.subtitle, params);
 				}
 			}
 
-			// Clean up maxDurations for actors that are no longer speaking
+			// Drop per-speaker timing caches for actors that are no longer speaking.
 			std::vector<RE::FormID> activeFormIDs;
 			for (auto& subInfo : subtitleArray) {
 				if (const auto& ref = subInfo.speaker.get()) {
 					activeFormIDs.push_back(ref->GetFormID());
 				}
 			}
-			for (auto it = maxDurations.begin(); it != maxDurations.end();) {
-				if (std::find(activeFormIDs.begin(), activeFormIDs.end(), it->first) == activeFormIDs.end()) {
-					it = maxDurations.erase(it);
-				} else {
-					++it;
+			const auto pruneInactive = [&](auto& cache) {
+				for (auto it = cache.begin(); it != cache.end();) {
+					if (std::find(activeFormIDs.begin(), activeFormIDs.end(), it->first) == activeFormIDs.end()) {
+						it = cache.erase(it);
+					} else {
+						++it;
+					}
 				}
-			}
-			for (auto it = customSubtitleTimers.begin(); it != customSubtitleTimers.end();) {
-				if (std::find(activeFormIDs.begin(), activeFormIDs.end(), it->first) == activeFormIDs.end()) {
-					it = customSubtitleTimers.erase(it);
-				} else {
-					++it;
-				}
-			}
+			};
+			pruneInactive(maxDurations);
+			pruneInactive(silentDurations);
+			pruneInactive(customSubtitleTimers);
 		}
 		ImGui::End();
 	}

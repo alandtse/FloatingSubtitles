@@ -20,14 +20,7 @@ namespace ImGui
 
 		if (camera) {
 			if (REL::Module::IsVR()) {
-				auto& mtx = camera->GetVRRuntimeData().worldToCam;
-				if (a_log) {
-					logger::info("[WorldToScreenLoc] VR Camera worldToCam matrix:");
-					logger::info("  Row 0: [{:.4f}, {:.4f}, {:.4f}, {:.4f}]", mtx[0][0], mtx[0][1], mtx[0][2], mtx[0][3]);
-					logger::info("  Row 1: [{:.4f}, {:.4f}, {:.4f}, {:.4f}]", mtx[1][0], mtx[1][1], mtx[1][2], mtx[1][3]);
-					logger::info("  Row 2: [{:.4f}, {:.4f}, {:.4f}, {:.4f}]", mtx[2][0], mtx[2][1], mtx[2][2], mtx[2][3]);
-					logger::info("  Row 3: [{:.4f}, {:.4f}, {:.4f}, {:.4f}]", mtx[3][0], mtx[3][1], mtx[3][2], mtx[3][3]);
-				}
+				auto&             mtx = camera->GetVRRuntimeData().worldToCam;
 				RE::NiRect<float> vrPort(0.0f, 1.0f, 1.0f, 0.0f);
 				projected = RE::NiCamera::WorldPtToScreenPt3(
 					mtx,
@@ -47,20 +40,20 @@ namespace ImGui
 		}
 
 		if (a_log) {
-			logger::info("[WorldToScreenLoc] World input: ({:.2f}, {:.2f}, {:.2f})", worldLocIn.x, worldLocIn.y, worldLocIn.z);
-			logger::info("[WorldToScreenLoc] Projected raw: ({:.4f}, {:.4f}), zVal: {:.4f}", screenLocOut.x, screenLocOut.y, zVal);
+			logger::debug("[WorldToScreenLoc] World input: ({:.2f}, {:.2f}, {:.2f})", worldLocIn.x, worldLocIn.y, worldLocIn.z);
+			logger::debug("[WorldToScreenLoc] Projected raw: ({:.4f}, {:.4f}), zVal: {:.4f}", screenLocOut.x, screenLocOut.y, zVal);
 		}
 
 		if (REL::Module::IsVR()) {
 			const float coverage = ImGui::Renderer::GetHUDCoverage();
 			if (a_log) {
-				logger::info("[WorldToScreenLoc] VR coverage: {:.4f}", coverage);
+				logger::debug("[WorldToScreenLoc] VR coverage: {:.4f}", coverage);
 			}
 			if (coverage > 0.0f) {
 				screenLocOut.x = 0.5f + (screenLocOut.x - 0.5f) / coverage;
 				screenLocOut.y = 0.5f + (screenLocOut.y - 0.5f) / coverage;
 				if (a_log) {
-					logger::info("[WorldToScreenLoc] Projected after coverage: ({:.4f}, {:.4f})", screenLocOut.x, screenLocOut.y);
+					logger::debug("[WorldToScreenLoc] Projected after coverage: ({:.4f}, {:.4f})", screenLocOut.x, screenLocOut.y);
 				}
 			}
 		}
@@ -70,7 +63,7 @@ namespace ImGui
 		screenLocOut.y = rect.y * (1.0f - screenLocOut.y);
 
 		if (a_log) {
-			logger::info("[WorldToScreenLoc] Final screen out: ({:.2f}, {:.2f}), displaySize: ({:.2f}, {:.2f})", screenLocOut.x, screenLocOut.y, rect.x, rect.y);
+			logger::debug("[WorldToScreenLoc] Final screen out: ({:.2f}, {:.2f}), displaySize: ({:.2f}, {:.2f})", screenLocOut.x, screenLocOut.y, rect.x, rect.y);
 		}
 
 		return zVal;
