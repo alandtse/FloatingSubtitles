@@ -37,7 +37,9 @@ namespace ImGui
 		if (UsingDefaultFont()) {
 			logger::info("Using default font...");
 			config.GlyphExtraAdvanceX = futuraFont.spacing;
-			primaryFont.font = io.Fonts->AddFontFromMemoryCompressedTTF(BSFont_Data, BSFont_Size, std::truncf(futuraFont.size * ModAPIHandler::GetSingleton()->GetResolutionScale()), &config);
+			// futuraFont.size already includes GetResolutionScale() (applied in
+			// LoadFontSettings); don't scale a second time or VR doubles the font.
+			primaryFont.font = io.Fonts->AddFontFromMemoryCompressedTTF(BSFont_Data, BSFont_Size, futuraFont.size, &config);
 		} else {
 			primaryFont.LoadFont(config);
 		}
