@@ -2,7 +2,7 @@
 
 SKSE plugin that adds floating subtitles over NPCs
 [SSE/AE](https://www.nexusmods.com/skyrimspecialedition/mods/154424)
-[VR](https://www.nexusmods.com/skyrimspecialedition/mods/61734)
+[VR](https://www.nexusmods.com/skyrimspecialedition/mods/183714)
 
 ## Requirements
 * [CMake](https://cmake.org/)
@@ -23,6 +23,8 @@ SKSE plugin that adds floating subtitles over NPCs
 	* Needed for SSE/AE
 * [VR Address Library for SKSEVR](https://www.nexusmods.com/skyrimspecialedition/mods/58101)
 	* Needed for VR
+* [ImGui VR Helper](https://www.nexusmods.com/skyrimspecialedition/mods/183466)
+	* Needed for VR (provides the in-world HUD layer)
 
 ## Register Visual Studio as a Generator
 * Open `x64 Native Tools Command Prompt`
@@ -41,17 +43,17 @@ git submodule update
 
 ### SSE
 ```
-cmake --preset vs2022-windows-vcpkg-se
+cmake --preset vs2022-se
 cmake --build build --config Release
 ```
 ### AE
 ```
-cmake --preset vs2022-windows-vcpkg-ae
+cmake --preset vs2022-ae
 cmake --build buildae --config Release
 ```
 ### VR
 ```
-cmake --preset vs2022-windows-vcpkg-vr
+cmake --preset vs2022-vr
 cmake --build buildvr --config Release
 ```
 ## License
