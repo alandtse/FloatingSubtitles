@@ -119,7 +119,9 @@ jobs:
         run: |
           set -euo pipefail
           ver="${{ needs.verify.outputs.version }}"
-          stage="Floating Subtitles VR ${ver}"
+          # Hyphenated archive name (no spaces) for safe handling downstream; the Nexus
+          # display name is set separately via mod_filename.
+          stage="Floating-Subtitles-VR-${ver}"
           mkdir -p "$stage/SKSE/Plugins"
           # Data assets (esp, Interface, MCM, Scripts) at the archive root...
           cp -r Skyrim/Data/. "$stage/"
