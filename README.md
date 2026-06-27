@@ -12,11 +12,11 @@ SKSE plugin that adds floating subtitles over NPCs
 	* Add the environment variable `VCPKG_ROOT` with the value as the path to the folder containing vcpkg
 * [Visual Studio Community 2022](https://visualstudio.microsoft.com/)
 	* Desktop development with C++
-* [CommonLibSSE](https://github.com/powerof3/CommonLibSSE/tree/dev)
-	* You need to build from the powerof3/dev branch
-	* Add this as as an environment variable `CommonLibSSEPath`
-* [CommonLibVR](https://github.com/alandtse/CommonLibVR/tree/vr)
-	* Add this as as an environment variable `CommonLibVRPath` instead of /external
+* [CommonLibVR (NG)](https://github.com/alandtse/CommonLibVR/tree/ng)
+	* Bundled as the `extern/CommonLibVR` submodule and used for **all** targets
+	  (SE/AE single-runtime and VR multiruntime); run `git submodule update --init`.
+	* The NG library is required because the source uses its runtime accessors
+	  (`GetRuntimeData`/`GetVRRuntimeData`/`VariantOffset`).
 
 ## User Requirements
 * [Address Library for SKSE](https://www.nexusmods.com/skyrimspecialedition/mods/32444)
@@ -33,28 +33,19 @@ SKSE plugin that adds floating subtitles over NPCs
 
 ## Building
 ```
-git clone https://github.com/powerof3/FloatingSubtitles.git
+git clone https://github.com/alandtse/FloatingSubtitles.git
 cd FloatingSubtitles
-# pull commonlib /extern to override the path settings
-git submodule init
-# to update submodules to checked in build
-git submodule update
+git submodule update --init --recursive
 ```
 
-### SSE
+This produces a single universal DLL that runtime-detects SE, AE, and VR. The
+post-build step copies it to every `Skyrim64Path` / `SkyrimAEPath` / `SkyrimVRPath`
+you have set.
 ```
-cmake --preset vs2022-se
+cmake --preset vs2022
 cmake --build build --config Release
 ```
-### AE
-```
-cmake --preset vs2022-ae
-cmake --build buildae --config Release
-```
-### VR
-```
-cmake --preset vs2022-vr
-cmake --build buildvr --config Release
-```
+Use `--preset vs2026` instead for the Visual Studio 2026 toolset.
+
 ## License
 [MIT](LICENSE)

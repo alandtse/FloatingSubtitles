@@ -1,5 +1,6 @@
-# VR counterpart to powerof3's pack.yml: the fork's single entry for building and
-# releasing the VR multiruntime DLL. Called by main.yml's owner-gated `vr` job.
+# Counterpart to powerof3's pack.yml: the fork's single entry for building and
+# releasing the universal NG DLL (one binary that runtime-detects SE/AE/VR). Called by
+# main.yml's owner-gated `vr` job and published as the VR Nexus mod.
 #
 # - build runs on every trigger (CI).
 # - On a version tag vX.Y.Z.W (upstream X.Y.Z + the VR patch from VR_VERSION, the
@@ -25,7 +26,7 @@ permissions:
 
 jobs:
   build:
-    name: Build (CMake · vs2022-vr · Release)
+    name: Build (CMake · vs2022 · Release)
     runs-on: windows-2025
     outputs:
       artifact-name: floating-subtitles-vr-binaries
@@ -47,17 +48,17 @@ jobs:
             vcpkg-${{ runner.os }}-
 
       - name: Configure
-        run: cmake --preset vs2022-vr -DCOPY_BUILD=OFF
+        run: cmake --preset vs2022 -DCOPY_BUILD=OFF
 
       - name: Build
-        run: cmake --build buildvr --config Release
+        run: cmake --build build --config Release
 
       - name: Stage binaries
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path staging | Out-Null
-          Copy-Item buildvr/Release/po3_FloatingSubtitles.dll staging/
-          Copy-Item buildvr/Release/po3_FloatingSubtitles.pdb staging/
+          Copy-Item build/Release/po3_FloatingSubtitles.dll staging/
+          Copy-Item build/Release/po3_FloatingSubtitles.pdb staging/
 
       - name: Upload binaries
         uses: actions/upload-artifact@v4

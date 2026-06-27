@@ -1,14 +1,11 @@
 cmake_minimum_required(VERSION 3.20)
 set(NAME "po3_FloatingSubtitles" CACHE STRING "")
 set(VERSION 3.3.3 CACHE STRING "")
-set(AE_VERSION 1)
 set(VR_VERSION 1)
 
 # ---- Options ----
 
 option(COPY_BUILD "Copy the build output to the Skyrim directory." TRUE)
-option(BUILD_SKYRIMVR "Build for Skyrim VR" OFF)
-option(BUILD_SKYRIMAE "Build for Skyrim AE" OFF)
 
 # ---- Cache build vars ----
 
@@ -55,37 +52,29 @@ macro(find_commonlib_path)
 endmacro()
 
 set_from_environment(VCPKG_ROOT)
-if(BUILD_SKYRIMAE)
-	add_compile_definitions(SKYRIM_AE)
-	add_compile_definitions(SKYRIM_SUPPORT_AE)
-	set(CommonLibName "CommonLibSSE")
-	set_from_environment(SkyrimAEPath)
-	set(SkyrimPath ${SkyrimAEPath})
-	set(SkyrimVersion "Skyrim AE")
-	set(VERSION ${VERSION}.${AE_VERSION})
-elseif(BUILD_SKYRIMVR)
-	add_compile_definitions(SKYRIMVR)
-	add_compile_definitions(_CRT_SECURE_NO_WARNINGS)
-	set(CommonLibName "CommonLibSSE")
-	set(CommonLibPath "${CMAKE_CURRENT_SOURCE_DIR}/extern/CommonLibVR")
-	set(BUILD_TESTS OFF CACHE BOOL "" FORCE)
-	set(ENABLE_SKYRIM_SE ON CACHE BOOL "" FORCE)
-	set(ENABLE_SKYRIM_AE ON CACHE BOOL "" FORCE)
-	set(ENABLE_SKYRIM_VR ON CACHE BOOL "" FORCE)
-	set_from_environment(SkyrimVRPath)
-	set(SkyrimPath ${SkyrimVRPath})
-	set(SkyrimVersion "Skyrim VR")
-	set(VERSION ${VERSION}.${VR_VERSION})
-else()
-	set(CommonLibName "CommonLibSSE")
-	set_from_environment(Skyrim64Path)
-	set(SkyrimPath ${Skyrim64Path})
-	set(SkyrimVersion "Skyrim SSE")
-endif()
+# One universal build: every runtime is enabled and SE/AE/VR are detected at runtime
+# (REL::Module / stl::IsVR), so a single NG DLL loads and renders correctly on all of
+# them — no per-runtime variants. Built against the bundled NG CommonLib, whose runtime
+# accessors (GetRuntimeData/GetVRRuntimeData/VariantOffset) the non-NG CommonLibSSE lacks.
+add_compile_definitions(SKYRIM_SUPPORT_VR)
+add_compile_definitions(_CRT_SECURE_NO_WARNINGS)
+set(CommonLibName "CommonLibSSE")
+set(CommonLibPath "${CMAKE_CURRENT_SOURCE_DIR}/extern/CommonLibVR")
+set(ENABLE_SKYRIM_SE ON CACHE BOOL "" FORCE)
+set(ENABLE_SKYRIM_AE ON CACHE BOOL "" FORCE)
+set(ENABLE_SKYRIM_VR ON CACHE BOOL "" FORCE)
+set(BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(VERSION ${VERSION}.${VR_VERSION})
+
+# Deploy to every Skyrim install that's configured; the same DLL serves all of them.
+set_from_environment(Skyrim64Path)
+set_from_environment(SkyrimAEPath)
+set_from_environment(SkyrimVRPath)
+
 find_commonlib_path()
 message(
 	STATUS
-	"Building ${NAME} ${VERSION} for ${SkyrimVersion} at ${SkyrimPath} with ${CommonLibName} at ${CommonLibPath}."
+	"Building ${NAME} ${VERSION} (universal SE/AE/VR) with ${CommonLibName} at ${CommonLibPath}."
 )
 
 if (DEFINED VCPKG_ROOT)
@@ -151,10 +140,6 @@ set(Boost_USE_STATIC_LIBS ON)
 
 # ---- Dependencies ----
 if (DEFINED CommonLibPath AND NOT ${CommonLibPath} STREQUAL "" AND IS_DIRECTORY ${CommonLibPath})
-	set(BUILD_TESTS OFF CACHE BOOL "" FORCE)
-	set(ENABLE_SKYRIM_SE ON CACHE BOOL "" FORCE)
-	set(ENABLE_SKYRIM_AE ON CACHE BOOL "" FORCE)
-	set(ENABLE_SKYRIM_VR ON CACHE BOOL "" FORCE)
 	add_subdirectory(${CommonLibPath} ${CommonLibName})
 else ()
 	message(
@@ -278,17 +263,22 @@ endif ()
 # ---- Post build ----
 
 if (COPY_BUILD)
-	if (DEFINED SkyrimPath)
-		add_custom_command(
-			TARGET ${PROJECT_NAME}
-			POST_BUILD
-			COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:${PROJECT_NAME}> ${SkyrimPath}/SKSE/Plugins/
-			COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_PDB_FILE:${PROJECT_NAME}> ${SkyrimPath}/SKSE/Plugins/
-		)
-	else ()
+	set(deployed FALSE)
+	foreach (game_path "${Skyrim64Path}" "${SkyrimAEPath}" "${SkyrimVRPath}")
+		if (game_path AND IS_DIRECTORY "${game_path}")
+			add_custom_command(
+				TARGET ${PROJECT_NAME}
+				POST_BUILD
+				COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:${PROJECT_NAME}> "${game_path}/SKSE/Plugins/"
+				COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_PDB_FILE:${PROJECT_NAME}> "${game_path}/SKSE/Plugins/"
+			)
+			set(deployed TRUE)
+		endif ()
+	endforeach ()
+	if (NOT deployed)
 		message(
 			WARNING
-			"Variable SkyrimPath is not defined. Skipping post-build copy command."
+			"No Skyrim install path is set (Skyrim64Path/SkyrimAEPath/SkyrimVRPath). Skipping post-build copy."
 		)
 	endif ()
 endif ()
