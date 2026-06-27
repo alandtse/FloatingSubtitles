@@ -3,7 +3,7 @@
   "version-string": "3.3.2",
   "description": "",
   "homepage": "",
-  "license": "MIT",
+  "license": "GPL-3.0-or-later",
   "dependencies": [
     "boost-unordered",
     "clib-util",
@@ -11,7 +11,7 @@
     "freetype",
     {
       "name": "imgui",
-      "features": [ "dx11-binding", "win32-binding", "freetype", "wchar32" ]
+      "features": ["dx11-binding", "win32-binding", "freetype", "wchar32"]
     },
     "nlohmann-json",
     "rapidcsv",
