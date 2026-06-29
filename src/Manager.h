@@ -46,6 +46,7 @@ public:
 		float             subtitleHeadOffset{ 15.0f };
 		float             subtitleSpacing{ 0.5f };
 		bool              showSpeakerName{ false };
+		bool              showHUDDialogue{ false };  // also show the vanilla bottom-bar for the on-screen dialogue speaker
 		bool              useBTPSWidgetPosition{ true };
 		bool              useTrueHUDWidgetPosition{ true };
 		bool              doRayCastChecks{ true };
@@ -76,6 +77,7 @@ private:
 	void                AddProcessedSubtitle(const char* subtitle);
 	const DualSubtitle& GetProcessedSubtitle(const RE::BSString& a_subtitle);
 	void                DrawProcessedSubtitle(const RE::BSString& a_subtitle, const DualSubtitle::ScreenParams& a_);
+	ImVec2              MeasureProcessedSubtitle(const RE::BSString& a_subtitle, const DualSubtitle::ScreenParams& a_params);
 	void                RebuildProcessedSubtitles();
 
 	RE::NiPoint3        CalculateSubtitleAnchorPos(const RE::SubtitleInfoEx& a_subInfo, bool a_log = false) const;

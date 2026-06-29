@@ -1,6 +1,7 @@
 #include "Manager.h"
 
 #include "Compatibility.h"
+#include "ImGui/Renderer.h"
 #include "ImGui/Util.h"
 #include "RayCaster.h"
 #include "SettingLoader.h"
@@ -14,6 +15,7 @@ std::pair<bool, bool> Manager::MCMSettings::LoadMCMSettings(const CSimpleIniA& a
 	current.showDualSubs = a_ini.GetBoolValue("Settings", "bDualSubtitles", current.showDualSubs);
 
 	showSpeakerName = a_ini.GetBoolValue("Settings", "bShowSpeakerName", showSpeakerName);
+	showHUDDialogue = a_ini.GetBoolValue("Settings", "bShowHUDDialogue", showHUDDialogue);
 
 	subtitleHeadOffset = static_cast<float>(a_ini.GetDoubleValue("Settings", "fHeadOffset", 20.0)) * ModAPIHandler::GetSingleton()->GetResolutionScale();
 
@@ -176,6 +178,22 @@ void Manager::DrawProcessedSubtitle(const RE::BSString& a_subtitle, const DualSu
 	it->second.DrawDualSubtitle(a_params);
 }
 
+ImVec2 Manager::MeasureProcessedSubtitle(const RE::BSString& a_subtitle, const DualSubtitle::ScreenParams& a_params)
+{
+	{
+		ReadLocker readLock(subtitleLock);
+		if (auto it = processedSubtitles.find(a_subtitle.c_str()); it != processedSubtitles.end()) {
+			it->second.EnsureWrapped();
+			return it->second.MeasureBlock(a_params);
+		}
+	}
+
+	WriteLocker writeLock(subtitleLock);
+	auto [it, inserted] = processedSubtitles.try_emplace(a_subtitle.c_str(), CreateDualSubtitles(a_subtitle.c_str()));
+	it->second.EnsureWrapped();
+	return it->second.MeasureBlock(a_params);
+}
+
 void Manager::AddSubtitle(RE::SubtitleManager* a_manager, const char* a_subtitle)
 {
 	if (!string::is_empty(a_subtitle) && !string::is_only_space(a_subtitle)) {
@@ -244,6 +262,12 @@ void Manager::UpdateSubtitleInfo(RE::SubtitleInfoEx& a_subInfo, bool a_buildOffs
 		a_subInfo.setFlag(RE::SubtitleInfoEx::Flag::kDraw, settings.obscuredSubtitleAlpha > 0.0f);
 	} else {
 		a_subInfo.setFlag(SubtitleFlag::kDraw, true);
+	}
+
+	// Optionally also drive the vanilla bottom-bar dialogue subtitle for the on-screen speaker;
+	// floating still draws, this just adds the HUD bar. Off-screen speakers already get it above.
+	if (settings.showHUDDialogue && isDialogueSpeaker && a_buildOffscreenSubs) {
+		BuildOffscreenSubtitle(ref, a_subInfo.subtitle, true);
 	}
 
 	CalculateAlphaModifier(a_subInfo);
@@ -464,6 +488,10 @@ RE::NiPoint3 Manager::CalculateSubtitleAnchorPos(const RE::SubtitleInfoEx& a_sub
 void Manager::Draw()
 {
 	if (SkipRender()) {
+		// Clear any world-quad billboards from the previous frame so stale subtitles don't linger.
+		if (ImGui::Renderer::WorldQuadActive()) {
+			ImGui::Renderer::SubmitSubtitleQuads({});
+		}
 		return;
 	}
 
@@ -511,6 +539,16 @@ void Manager::Draw()
 
 			const auto playerLoc = RE::PlayerCharacter::GetSingleton()->GetPosition();
 
+			// VR world-quad path: render each subtitle into its own panel sub-rect and project it
+			// onto a billboard at the speaker's world position (stable, no HUD-plane swim). Collect
+			// the billboards here and submit them after the loop.
+			const bool                                 worldQuad = ImGui::Renderer::WorldQuadActive();
+			std::vector<ImGui::Renderer::SubtitleQuad> vrQuads;
+			const ImVec2                               panelSize = ImGui::GetIO().DisplaySize;
+			float                                      vrPenY = 20.0f;
+			constexpr float                            kWorldMetersPerPanelPixel = 0.00225f;  // world size per panel pixel; tune in-headset
+			constexpr float                            kQuadGapPx = 20.0f;
+
 			for (auto& subInfo : subtitleArray | std::views::reverse) {  // reverse order so closer subtitles get rendered on top
 				if (const auto& ref = subInfo.speaker.get()) {
 					if (inFreeCameraMode) {
@@ -522,9 +560,14 @@ void Manager::Draw()
 					}
 
 					auto anchorPos = CalculateSubtitleAnchorPos(subInfo, logThisFrame);
-					auto zDepth = ImGui::WorldToScreenLoc(anchorPos, params.pos, logThisFrame);
-					if (zDepth < 0.0f) {
-						continue;
+
+					if (!worldQuad) {
+						// Flat (and VR fallback when the helper lacks world-quad support): project the
+						// anchor onto the screen/HUD plane and skip it if behind the camera.
+						auto zDepth = ImGui::WorldToScreenLoc(anchorPos, params.pos, logThisFrame);
+						if (zDepth < 0.0f) {
+							continue;
+						}
 					}
 
 					auto alphaMult = std::bit_cast<float>(subInfo.alphaModifier());
@@ -610,55 +653,110 @@ void Manager::Draw()
 					params.elapsedTime = elapsedTime;
 					params.duration = duration;
 
-					// Distance-based font scaling: full size within kFontScaleStartDistance,
-					// shrinking to (1 - kMaxFontScaleReduction) at the max subtitle distance.
-					constexpr float kFontScaleStartDistance = 200.0f;
-					constexpr float kMaxFontScaleReduction = 0.5f;
-					float           distance = std::sqrt(subInfo.targetDistance);
-					float           fontScale = 1.0f;
-					float           maxDist = std::sqrt(maxDistanceStartSq);
-					if (maxDist > kFontScaleStartDistance && distance > kFontScaleStartDistance) {
-						fontScale = 1.0f - ((distance - kFontScaleStartDistance) / (maxDist - kFontScaleStartDistance)) * kMaxFontScaleReduction;
-						fontScale = std::clamp(fontScale, 1.0f - kMaxFontScaleReduction, 1.0f);
-					}
+					if (worldQuad) {
+						// World quad supplies perspective via height_m, so render the panel text at a
+						// fixed scale and lay each subtitle into its own panel sub-rect, then record a
+						// billboard at the speaker's world anchor.
+						params.fontScale = 1.0f;
 
-					// Shrink a distant speaker's subtitle further when a closer speaker sits
-					// within ~25 degrees of the same direction, to reduce overlap.
-					bool         closerSpeakerInBetween = false;
-					RE::NiPoint3 dirDistant = ref->GetPosition() - playerLoc;
-					dirDistant.Unitize();
+						const ImVec2 sz = MeasureProcessedSubtitle(subInfo.subtitle, params);
+						if (sz.x <= 0.0f || sz.y <= 0.0f) {
+							continue;
+						}
+						if (vrPenY + sz.y > panelSize.y - 20.0f) {
+							if (logThisFrame) {
+								logger::debug("[Manager::Draw] VR panel full; dropping subtitle '{}'.", subInfo.subtitle.c_str());
+							}
+							continue;
+						}
 
-					for (const auto& otherSubInfo : subtitleArray) {
-						if (&otherSubInfo != &subInfo && otherSubInfo.isFlagSet(SubtitleFlag::kDraw)) {
-							if (otherSubInfo.targetDistance < subInfo.targetDistance) {
-								if (const auto otherRef = otherSubInfo.speaker.get()) {
-									RE::NiPoint3 dirCloser = otherRef->GetPosition() - playerLoc;
-									dirCloser.Unitize();
-									float dot = dirDistant.x * dirCloser.x + dirDistant.y * dirCloser.y + dirDistant.z * dirCloser.z;
-									// cos(25 degrees) ≈ 0.906
-									if (dot > 0.906f) {
-										closerSpeakerInBetween = true;
-										break;
+						const float rectTop = vrPenY;
+						const float rectBottom = vrPenY + sz.y;
+						const float posX = panelSize.x * 0.5f;
+						params.pos = { posX, rectBottom };  // DrawDualSubtitle grows the block upward from posY
+						DrawProcessedSubtitle(subInfo.subtitle, params);
+
+						const float  heightMeters = sz.y * kWorldMetersPerPanelPixel * settings.subtitleScale;
+						RE::NiPoint3 quadPos = anchorPos;
+						quadPos.z += 0.5f * heightMeters / ImGui::Renderer::kGameUnitToMeter;  // raise so text sits above the head (pos is the quad center)
+
+						ImGui::Renderer::SubtitleQuad quad{};
+						quad.worldPos = quadPos;
+						quad.u0 = (posX - sz.x * 0.5f) / panelSize.x;
+						quad.u1 = (posX + sz.x * 0.5f) / panelSize.x;
+						quad.v0 = rectTop / panelSize.y;
+						quad.v1 = rectBottom / panelSize.y;
+						quad.heightMeters = heightMeters;
+						vrQuads.push_back(quad);
+
+						vrPenY = rectBottom + kQuadGapPx;
+
+						if (logThisFrame) {
+							logger::debug("[Manager::Draw] Speaker '{}' worldquad sz=({:.0f}x{:.0f}) h={:.2f}m",
+								ModAPIHandler::GetSingleton()->GetReferenceName(ref), sz.x, sz.y, heightMeters);
+						}
+					} else {
+						// Distance-based font scaling for the flat screen path (and VR fallback when
+						// the helper lacks world-quad support).
+						constexpr float kFontScaleStartDistance = 200.0f;
+						constexpr float kMaxFontScaleReduction = 0.5f;
+						float           distance = std::sqrt(subInfo.targetDistance);
+						float           fontScale = 1.0f;
+						if (REL::Module::IsVR()) {
+							constexpr float kFullSizeDistance = 200.0f;
+							constexpr float kMinFontScale = 0.15f;
+							fontScale = std::clamp(kFullSizeDistance / std::max(distance, 1.0f), kMinFontScale, 1.0f);
+						} else {
+							float maxDist = std::sqrt(maxDistanceStartSq);
+							if (maxDist > kFontScaleStartDistance && distance > kFontScaleStartDistance) {
+								fontScale = 1.0f - ((distance - kFontScaleStartDistance) / (maxDist - kFontScaleStartDistance)) * kMaxFontScaleReduction;
+								fontScale = std::clamp(fontScale, 1.0f - kMaxFontScaleReduction, 1.0f);
+							}
+						}
+
+						// Shrink a distant speaker's subtitle further when a closer speaker sits
+						// within ~25 degrees of the same direction, to reduce overlap.
+						bool         closerSpeakerInBetween = false;
+						RE::NiPoint3 dirDistant = ref->GetPosition() - playerLoc;
+						dirDistant.Unitize();
+
+						for (const auto& otherSubInfo : subtitleArray) {
+							if (&otherSubInfo != &subInfo && otherSubInfo.isFlagSet(SubtitleFlag::kDraw)) {
+								if (otherSubInfo.targetDistance < subInfo.targetDistance) {
+									if (const auto otherRef = otherSubInfo.speaker.get()) {
+										RE::NiPoint3 dirCloser = otherRef->GetPosition() - playerLoc;
+										dirCloser.Unitize();
+										float dot = dirDistant.x * dirCloser.x + dirDistant.y * dirCloser.y + dirDistant.z * dirCloser.z;
+										// cos(25 degrees) ≈ 0.906
+										if (dot > 0.906f) {
+											closerSpeakerInBetween = true;
+											break;
+										}
 									}
 								}
 							}
 						}
+
+						if (closerSpeakerInBetween) {
+							fontScale *= 0.75f;
+							fontScale = std::clamp(fontScale, 0.40f, 1.0f);
+						}
+
+						params.fontScale = fontScale * settings.subtitleScale;
+
+						if (logThisFrame) {
+							logger::debug("[Manager::Draw] Speaker '{}' distance={:.1f}, fontScale={:.2f}, inBetween={}",
+								ModAPIHandler::GetSingleton()->GetReferenceName(ref), distance, params.fontScale, closerSpeakerInBetween);
+						}
+
+						DrawProcessedSubtitle(subInfo.subtitle, params);
 					}
-
-					if (closerSpeakerInBetween) {
-						fontScale *= 0.75f;
-						fontScale = std::clamp(fontScale, 0.40f, 1.0f);
-					}
-
-					params.fontScale = fontScale * settings.subtitleScale;
-
-					if (logThisFrame) {
-						logger::debug("[Manager::Draw] Speaker '{}' distance={:.1f}, fontScale={:.2f}, inBetween={}",
-							ModAPIHandler::GetSingleton()->GetReferenceName(ref), distance, params.fontScale, closerSpeakerInBetween);
-					}
-
-					DrawProcessedSubtitle(subInfo.subtitle, params);
 				}
+			}
+
+			// Hand the per-frame world-quad billboard list to the helper (clears when empty).
+			if (worldQuad) {
+				ImGui::Renderer::SubmitSubtitleQuads(vrQuads);
 			}
 
 			// Drop per-speaker timing caches for actors that are no longer speaking.

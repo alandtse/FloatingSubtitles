@@ -41,6 +41,15 @@
           }
         },
         {
+          "id": "bShowHUDDialogue:Settings",
+          "text": "$FSUB_ShowHUDDialogue_Text",
+          "type": "toggle",
+          "help": "$FSUB_ShowHUDDialogue_Help",
+          "valueOptions": {
+            "sourceType": "ModSettingBool"
+          }
+        },
+        {
           "id": "bScrollSubtitles:Settings",
           "text": "$FSUB_ScrollSubtitles_Text",
           "type": "toggle",
