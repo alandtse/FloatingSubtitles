@@ -71,7 +71,7 @@ struct DualSubtitle
 	void Invalidate();
 
 	// Draws the block and returns its pixel size {width, height} at the given fontScale.
-	ImVec2      DrawDualSubtitle(const ScreenParams& a_screenParams) const;
+	ImVec2 DrawDualSubtitle(const ScreenParams& a_screenParams) const;
 	// Pixel size {width, height} the block would occupy, without drawing — used by the VR
 	// world-quad path to lay each subtitle out in its own panel sub-rect before drawing.
 	ImVec2      MeasureBlock(const ScreenParams& a_screenParams) const;
