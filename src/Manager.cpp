@@ -546,7 +546,7 @@ void Manager::Draw()
 			std::vector<ImGui::Renderer::SubtitleQuad> vrQuads;
 			const ImVec2                               panelSize = ImGui::GetIO().DisplaySize;
 			float                                      vrPenY = 20.0f;
-			constexpr float                            kWorldMetersPerPanelPixel = 0.00225f;  // world size per panel pixel; tune in-headset
+			constexpr float                            kWorldMetersPerPanelPixel = 0.0016875f;  // world size per panel pixel; tune in-headset (also scalable live via fSubtitleScale MCM)
 			constexpr float                            kQuadGapPx = 20.0f;
 
 			for (auto& subInfo : subtitleArray | std::views::reverse) {  // reverse order so closer subtitles get rendered on top
