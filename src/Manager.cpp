@@ -16,6 +16,7 @@ std::pair<bool, bool> Manager::MCMSettings::LoadMCMSettings(const CSimpleIniA& a
 
 	showSpeakerName = a_ini.GetBoolValue("Settings", "bShowSpeakerName", showSpeakerName);
 	showHUDDialogue = a_ini.GetBoolValue("Settings", "bShowHUDDialogue", showHUDDialogue);
+	showHUDGeneral = a_ini.GetBoolValue("Settings", "bShowHUDGeneral", showHUDGeneral);
 
 	subtitleHeadOffset = static_cast<float>(a_ini.GetDoubleValue("Settings", "fHeadOffset", 20.0)) * ModAPIHandler::GetSingleton()->GetResolutionScale();
 
@@ -164,9 +165,10 @@ const DualSubtitle& Manager::GetProcessedSubtitle(const RE::BSString& a_subtitle
 void Manager::DrawProcessedSubtitle(const RE::BSString& a_subtitle, const DualSubtitle::ScreenParams& a_params)
 {
 	{
-		ReadLocker writeLock(subtitleLock);
-		if (auto it = processedSubtitles.find(a_subtitle.c_str()); it != processedSubtitles.end()) {
-			it->second.EnsureWrapped();
+		// Fast path: only the (mutating) EnsureWrapped needs a writer; a wrapped entry is safe to
+		// draw under the shared read lock.
+		ReadLocker readLock(subtitleLock);
+		if (auto it = processedSubtitles.find(a_subtitle.c_str()); it != processedSubtitles.end() && it->second.IsWrapped()) {
 			it->second.DrawDualSubtitle(a_params);
 			return;
 		}
@@ -181,9 +183,10 @@ void Manager::DrawProcessedSubtitle(const RE::BSString& a_subtitle, const DualSu
 ImVec2 Manager::MeasureProcessedSubtitle(const RE::BSString& a_subtitle, const DualSubtitle::ScreenParams& a_params)
 {
 	{
+		// Fast path: a wrapped entry is safe to measure under the shared read lock; only the
+		// mutating EnsureWrapped needs a writer.
 		ReadLocker readLock(subtitleLock);
-		if (auto it = processedSubtitles.find(a_subtitle.c_str()); it != processedSubtitles.end()) {
-			it->second.EnsureWrapped();
+		if (auto it = processedSubtitles.find(a_subtitle.c_str()); it != processedSubtitles.end() && it->second.IsWrapped()) {
 			return it->second.MeasureBlock(a_params);
 		}
 	}
@@ -264,10 +267,17 @@ void Manager::UpdateSubtitleInfo(RE::SubtitleInfoEx& a_subInfo, bool a_buildOffs
 		a_subInfo.setFlag(SubtitleFlag::kDraw, true);
 	}
 
-	// Optionally also drive the vanilla bottom-bar dialogue subtitle for the on-screen speaker;
-	// floating still draws, this just adds the HUD bar. Off-screen speakers already get it above.
-	if (settings.showHUDDialogue && isDialogueSpeaker && a_buildOffscreenSubs) {
-		BuildOffscreenSubtitle(ref, a_subInfo.subtitle, true);
+	// Optionally also drive the vanilla bottom bar for the on-screen speaker; floating still draws,
+	// this just adds the HUD bar. Off-screen speakers already get it above. Dialogue and general
+	// (ambient) speech have independent toggles and route to their respective bars.
+	if (a_buildOffscreenSubs) {
+		if (isDialogueSpeaker) {
+			if (settings.showHUDDialogue) {
+				BuildOffscreenSubtitle(ref, a_subInfo.subtitle, true);
+			}
+		} else if (settings.showHUDGeneral) {
+			BuildOffscreenSubtitle(ref, a_subInfo.subtitle, false);
+		}
 	}
 
 	CalculateAlphaModifier(a_subInfo);

@@ -67,6 +67,9 @@ struct DualSubtitle
 	DualSubtitle(const LocalizedSubtitle& a_primarySubtitle, const LocalizedSubtitle& a_secondarySubtitle);
 
 	void EnsureWrapped();
+	// True once both subtitles are wrapped, so a reader can safely measure/draw under a shared
+	// lock without calling the mutating EnsureWrapped().
+	bool IsWrapped() const { return primary.isWrapped && secondary.isWrapped; }
 
 	void Invalidate();
 

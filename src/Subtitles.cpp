@@ -5,6 +5,7 @@
 
 #include "Compatibility.h"
 #include "ImGui/FontStyles.h"
+#include "ImGui/Renderer.h"
 #include "ImGui/Util.h"
 #include "Manager.h"
 
@@ -19,8 +20,9 @@ void Subtitle::WrapTextImpl()
 	lines.clear();
 
 	const auto& [text, maxChars, lang] = cached;
-	// VR's curved HUD shows fewer characters comfortably, so cap wide wrap widths at 45.
-	std::uint32_t maxLineWidth = stl::IsVR() ? (maxChars >= 80 ? 45 : maxChars) : maxChars;
+	// Wrap to the configured max-characters-per-line for both flat and VR; the MCM value is the
+	// single source of truth (VR ships a narrower default via a per-platform settings overlay).
+	std::uint32_t maxLineWidth = maxChars;
 
 	if (IsTextCJK(text)) {
 		WrapCJKText(lines, text, maxLineWidth);
@@ -458,6 +460,13 @@ ImVec2 DualSubtitle::MeasureBlock(const ScreenParams& a_screenParams) const
 	}
 	maxWidth *= a_screenParams.fontScale;
 
+	// Include the speaker-name line so the measured block isn't narrower than what DrawDualSubtitle
+	// renders (CalcTextSize already reflects the active fontScale set above).
+	if (!a_screenParams.speakerName.empty() && a_screenParams.alphaPrimary >= 0.01f) {
+		const std::string nameLine = std::format("{}:", a_screenParams.speakerName);
+		maxWidth = std::max(maxWidth, ImGui::CalcTextSize(nameLine.c_str()).x);
+	}
+
 	const bool isScrolling = Manager::GetSingleton()->GetSettings().scrollSubtitles && a_screenParams.duration > 0.0f;
 	float      primaryLines = (primary.lines.size() > 1 && isScrolling) ? 1.0f : static_cast<float>(primary.lines.size());
 	float      secondaryLines = (secondary.lines.size() > 1 && isScrolling) ? 1.0f : static_cast<float>(secondary.lines.size());
@@ -519,10 +528,11 @@ ImVec2 DualSubtitle::DrawDualSubtitle(const ScreenParams& a_screenParams) const
 	const float  paddingX = 20.0f;
 	const float  paddingY = 20.0f;
 
-	// VR pins the subtitle to a frozen world anchor and lets it scroll off the panel edge (cut
-	// off) for a world-locked feel, so skip the keep-on-screen clamp there. Flat still clamps so
-	// subtitles for off-edge speakers stay readable at the viewport border.
-	if (!stl::IsVR()) {
+	// World-quad subtitles are anchored to the speaker in world space and allowed to scroll off
+	// the panel edge (cut off) for a world-locked feel, so skip the keep-on-screen clamp only in
+	// that mode. Flat — and the VR non-world-quad fallback — still clamp so off-edge subtitles
+	// stay readable at the viewport border.
+	if (!ImGui::Renderer::WorldQuadActive()) {
 		const float minX = (maxWidth * 0.5f) + paddingX;
 		const float maxX = displaySize.x - (maxWidth * 0.5f) - paddingX;
 		if (minX < maxX) {

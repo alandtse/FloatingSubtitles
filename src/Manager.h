@@ -47,6 +47,7 @@ public:
 		float             subtitleSpacing{ 0.5f };
 		bool              showSpeakerName{ false };
 		bool              showHUDDialogue{ false };  // also show the vanilla bottom-bar for the on-screen dialogue speaker
+		bool              showHUDGeneral{ false };   // also show the vanilla bottom-bar for on-screen ambient/general speech
 		bool              useBTPSWidgetPosition{ true };
 		bool              useTrueHUDWidgetPosition{ true };
 		bool              doRayCastChecks{ true };

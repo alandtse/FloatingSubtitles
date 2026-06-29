@@ -160,7 +160,9 @@ include(FetchContent)
 FetchContent_Declare(
 	ImGuiVRHelper
 	GIT_REPOSITORY https://github.com/alandtse/imgui-vr-helper.git
-	GIT_TAG        v1.1.0
+	# TODO before merge: repoint to the tagged imgui-vr-helper release that includes the
+	# world-quad API (interface 004). Tracks the feature branch during co-development.
+	GIT_TAG        feat/world-quad-api
 	SOURCE_SUBDIR  api
 )
 FetchContent_MakeAvailable(ImGuiVRHelper)
@@ -279,6 +281,15 @@ if (COPY_BUILD)
 				COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_PDB_FILE:${PROJECT_NAME}> "${game_path}/SKSE/Plugins/"
 				COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/Skyrim/Data" "${game_path}"
 			)
+			# VR ships a narrower per-platform default (wrap width). Overlay the VR-only Data-vr
+			# on top of the shared Data for the SkyrimVR install only, after the main copy.
+			if (game_path STREQUAL "${SkyrimVRPath}")
+				add_custom_command(
+					TARGET ${PROJECT_NAME}
+					POST_BUILD
+					COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/Skyrim/Data-vr" "${game_path}"
+				)
+			endif ()
 			set(deployed TRUE)
 		endif ()
 	endforeach ()

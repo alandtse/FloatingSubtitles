@@ -86,10 +86,22 @@ RayCaster::Result RayCaster::GetResult(bool a_debugRay, bool a_doRayCast)
 		if (!camera) {
 			return Result::kOffscreen;
 		}
+		const auto&       worldToCam = camera->GetVRRuntimeData().worldToCam;
+		const auto&       bound = root->worldBound;
 		RE::NiRect<float> port(0.0f, 1.0f, 1.0f, 0.0f);
 		float             x = 0.0f, y = 0.0f, z = -1.0f;
-		if (!RE::NiCamera::WorldPtToScreenPt3(camera->GetVRRuntimeData().worldToCam, port, root->worldBound.center, x, y, z, 1e-5f)) {
+		if (!RE::NiCamera::WorldPtToScreenPt3(worldToCam, port, bound.center, x, y, z, 1e-5f)) {
 			return Result::kOffscreen;
+		}
+		// Expand the on-screen test by the actor's bound radius in screen space, so an actor whose
+		// center is just past the edge but whose body is still visible isn't wrongly flagged
+		// off-screen (parity with the flat PointInFrustum(center, radius) test).
+		float margin = 0.0f;
+		for (const auto& off : { RE::NiPoint3(bound.radius, 0.0f, 0.0f), RE::NiPoint3(0.0f, 0.0f, bound.radius) }) {
+			float ox = 0.0f, oy = 0.0f, oz = 0.0f;
+			if (RE::NiCamera::WorldPtToScreenPt3(worldToCam, port, bound.center + off, ox, oy, oz, 1e-5f)) {
+				margin = std::max({ margin, std::fabs(ox - x), std::fabs(oy - y) });
+			}
 		}
 		// Subtitles on the head-locked HUD plane fill only its coverage fraction of the view, so
 		// warp the test to match. World-quad billboards are visible across the whole view — test
@@ -98,9 +110,10 @@ RayCaster::Result RayCaster::GetResult(bool a_debugRay, bool a_doRayCast)
 			if (const float coverage = ImGui::Renderer::GetHUDCoverage(); coverage > 0.0f) {
 				x = 0.5f + (x - 0.5f) / coverage;
 				y = 0.5f + (y - 0.5f) / coverage;
+				margin /= coverage;
 			}
 		}
-		if (z < 0.0f || x < 0.0f || x > 1.0f || y < 0.0f || y > 1.0f) {
+		if (z < 0.0f || x < -margin || x > 1.0f + margin || y < -margin || y > 1.0f + margin) {
 			return Result::kOffscreen;
 		}
 	} else if (auto* camera = RE::Main::WorldRootCamera()) {
