@@ -117,7 +117,12 @@ bool Manager::HandlesGeneralSubtitles() const
 
 bool Manager::ShowGeneralSubtitles() const
 {
-	return "bGeneralSubtitles:Interface"_pref.value() && settings.current.showGeneralSubtitles;
+	// The mod's own toggle is authoritative: when on, FloatingSubtitles takes over general
+	// subtitles (suppresses the vanilla HUD draw and shows the floating one) regardless of the
+	// vanilla "bGeneralSubtitles:Interface" setting. ANDing that pref meant disabling vanilla also
+	// disabled the mod's suppression (so floating-only was impossible), and the VR menu doesn't
+	// reliably write it.
+	return settings.current.showGeneralSubtitles;
 }
 
 bool Manager::HandlesDialogueSubtitles() const
@@ -127,7 +132,8 @@ bool Manager::HandlesDialogueSubtitles() const
 
 bool Manager::ShowDialogueSubtitles() const
 {
-	return "bDialogueSubtitles:Interface"_pref.value() && settings.current.showDialogueSubtitles && !ModAPIHandler::GetSingleton()->ACCInstalled();
+	// Mod toggle authoritative (see ShowGeneralSubtitles); ACC owns dialogue subtitles when present.
+	return settings.current.showDialogueSubtitles && !ModAPIHandler::GetSingleton()->ACCInstalled();
 }
 
 DualSubtitle Manager::CreateDualSubtitles(const char* subtitle) const
@@ -384,9 +390,20 @@ void Manager::QueueOffscreenSubtitle() const
 
 RE::BSEventNotifyControl Manager::ProcessEvent(const RE::MenuOpenCloseEvent* a_event, RE::BSTEventSource<RE::MenuOpenCloseEvent>*)
 {
-	if (a_event && a_event->menuName == RE::DialogueMenu::MENU_NAME && !a_event->opening) {
+	if (!a_event) {
+		return RE::BSEventNotifyControl::kContinue;
+	}
+
+	if (a_event->menuName == RE::DialogueMenu::MENU_NAME && !a_event->opening) {
 		talkingActivatorSub.clear();
 		lastTalkingActivatorSub.clear();
+	}
+
+	// MCM-Helper's config lives under the Journal menu. Re-read settings when it closes so MCM
+	// changes apply at runtime — the Papyrus OnConfigClose callback the mod also uses is
+	// unreliable under VR's MCM-Helper, which left toggles (e.g. disabling subtitles) ignored.
+	if (a_event->menuName == RE::JournalMenu::MENU_NAME && !a_event->opening) {
+		LoadMCMSettings();
 	}
 
 	return RE::BSEventNotifyControl::kContinue;
