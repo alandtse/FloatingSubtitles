@@ -75,11 +75,11 @@ private:
 
 	DualSubtitle CreateDualSubtitles(const char* subtitle) const;
 
-	void                AddProcessedSubtitle(const char* subtitle);
-	DualSubtitle        GetProcessedSubtitle(const RE::BSString& a_subtitle);
-	void                DrawProcessedSubtitle(const RE::BSString& a_subtitle, const DualSubtitle::ScreenParams& a_);
-	ImVec2              MeasureProcessedSubtitle(const RE::BSString& a_subtitle, const DualSubtitle::ScreenParams& a_params);
-	void                RebuildProcessedSubtitles();
+	void         AddProcessedSubtitle(const char* subtitle);
+	DualSubtitle GetProcessedSubtitle(const RE::BSString& a_subtitle);
+	void         DrawProcessedSubtitle(const RE::BSString& a_subtitle, const DualSubtitle::ScreenParams& a_);
+	ImVec2       MeasureProcessedSubtitle(const RE::BSString& a_subtitle, const DualSubtitle::ScreenParams& a_params);
+	void         RebuildProcessedSubtitles();
 
 	RE::NiPoint3        CalculateSubtitleAnchorPos(const RE::SubtitleInfoEx& a_subInfo, bool a_log = false) const;
 	static RE::NiPoint3 GetSubtitleAnchorPosImpl(const RE::TESObjectREFRPtr& a_ref, float a_height, bool a_log = false);

@@ -102,7 +102,7 @@ namespace ImGui::Renderer
 
 			if (logThisFrame && &q == &a_quads.front()) {
 				logger::debug("[WorldQuad] P_sky=({:.1f},{:.1f},{:.1f}) -> P_trk=({:.3f},{:.3f},{:.3f})m h={:.2f}m roomScale={:.4f}",
-						q.worldPos.x, q.worldPos.y, q.worldPos.z, wq.pos[0], wq.pos[1], wq.pos[2], q.heightMeters, roomXf.scale);
+					q.worldPos.x, q.worldPos.y, q.worldPos.z, wq.pos[0], wq.pos[1], wq.pos[2], q.heightMeters, roomXf.scale);
 			}
 		}
 
