@@ -160,9 +160,7 @@ include(FetchContent)
 FetchContent_Declare(
 	ImGuiVRHelper
 	GIT_REPOSITORY https://github.com/alandtse/imgui-vr-helper.git
-	# TODO before merge: repoint to the tagged imgui-vr-helper release that includes the
-	# world-quad API (interface 004). Tracks the feature branch during co-development.
-	GIT_TAG        feat/world-quad-api
+	GIT_TAG        v1.5.0  # world-quad API (interface 004)
 	SOURCE_SUBDIR  api
 )
 FetchContent_MakeAvailable(ImGuiVRHelper)
