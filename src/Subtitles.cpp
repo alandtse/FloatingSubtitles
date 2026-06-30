@@ -511,6 +511,12 @@ ImVec2 DualSubtitle::DrawDualSubtitle(const ScreenParams& a_screenParams) const
 	}
 	maxWidth *= a_screenParams.fontScale;  // cached widths are unscaled; match the render scale
 
+	// Include the speaker-name line so the clamp below isn't narrower than what gets rendered.
+	if (!a_screenParams.speakerName.empty() && a_screenParams.alphaPrimary >= 0.01f) {
+		const std::string nameLine = std::format("{}:", a_screenParams.speakerName);
+		maxWidth = std::max(maxWidth, ImGui::CalcTextSize(nameLine.c_str()).x);
+	}
+
 	bool  isScrolling = Manager::GetSingleton()->GetSettings().scrollSubtitles && a_screenParams.duration > 0.0f;
 	float primaryLines = (primary.lines.size() > 1 && isScrolling) ? 1.0f : static_cast<float>(primary.lines.size());
 	float secondaryLines = (secondary.lines.size() > 1 && isScrolling) ? 1.0f : static_cast<float>(secondary.lines.size());

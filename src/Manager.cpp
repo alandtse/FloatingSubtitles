@@ -707,12 +707,20 @@ void Manager::Draw()
 						RE::NiPoint3 quadPos = anchorPos;
 						quadPos.z += 0.5f * heightMeters / ImGui::Renderer::kGameUnitToMeter;  // raise so text sits above the head (pos is the quad center)
 
+						// Clamp the panel sub-rect so the UVs stay in [0,1] even if a long speaker
+						// name / unbreakable line is wider (or the stack is taller) than the panel;
+						// the helper rejects a degenerate (zero-area) rect.
+						const float rectLeft = std::clamp(posX - sz.x * 0.5f, 0.0f, panelSize.x);
+						const float rectRight = std::clamp(posX + sz.x * 0.5f, 0.0f, panelSize.x);
+						const float uvTop = std::clamp(rectTop, 0.0f, panelSize.y);
+						const float uvBottom = std::clamp(rectBottom, 0.0f, panelSize.y);
+
 						ImGui::Renderer::SubtitleQuad quad{};
 						quad.worldPos = quadPos;
-						quad.u0 = (posX - sz.x * 0.5f) / panelSize.x;
-						quad.u1 = (posX + sz.x * 0.5f) / panelSize.x;
-						quad.v0 = rectTop / panelSize.y;
-						quad.v1 = rectBottom / panelSize.y;
+						quad.u0 = rectLeft / panelSize.x;
+						quad.u1 = rectRight / panelSize.x;
+						quad.v0 = uvTop / panelSize.y;
+						quad.v1 = uvBottom / panelSize.y;
 						quad.heightMeters = heightMeters;
 						vrQuads.push_back(quad);
 
