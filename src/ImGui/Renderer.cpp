@@ -71,7 +71,8 @@ namespace ImGui::Renderer
 		const auto&            rRoom = roomXf.rotate.entry;
 		const float            invScale = (roomXf.scale != 0.0f) ? (1.0f / roomXf.scale) : 1.0f;
 
-		const bool logThisFrame = Manager::GetSingleton()->GetSettings().debugLog;
+		static std::uint64_t frameCount = 0;
+		const bool           logThisFrame = Manager::GetSingleton()->GetSettings().debugLog && (++frameCount % 180 == 0);
 
 		std::vector<ImGuiVRHelperPluginAPI::WorldQuad> out;
 		out.reserve(a_quads.size());
@@ -100,12 +101,8 @@ namespace ImGui::Renderer
 			out.push_back(wq);
 
 			if (logThisFrame && &q == &a_quads.front()) {
-				logger::debug("[WorldQuad] P_sky=({:.1f},{:.1f},{:.1f}) roomOrigin=({:.1f},{:.1f},{:.1f}) roomScale={:.4f}",
-					q.worldPos.x, q.worldPos.y, q.worldPos.z, roomXf.translate.x, roomXf.translate.y, roomXf.translate.z, roomXf.scale);
-				logger::debug("[WorldQuad]   roomBasis col0=({:.2f},{:.2f},{:.2f}) col1=({:.2f},{:.2f},{:.2f}) col2=({:.2f},{:.2f},{:.2f})",
-					rRoom[0][0], rRoom[1][0], rRoom[2][0], rRoom[0][1], rRoom[1][1], rRoom[2][1], rRoom[0][2], rRoom[1][2], rRoom[2][2]);
-				logger::debug("[WorldQuad]   pRoom=({:.1f},{:.1f},{:.1f})u -> P_trk=({:.3f},{:.3f},{:.3f})m h={:.2f}m",
-					pRoom.x, pRoom.y, pRoom.z, wq.pos[0], wq.pos[1], wq.pos[2], q.heightMeters);
+				logger::debug("[WorldQuad] P_sky=({:.1f},{:.1f},{:.1f}) -> P_trk=({:.3f},{:.3f},{:.3f})m h={:.2f}m roomScale={:.4f}",
+						q.worldPos.x, q.worldPos.y, q.worldPos.z, wq.pos[0], wq.pos[1], wq.pos[2], q.heightMeters, roomXf.scale);
 			}
 		}
 
