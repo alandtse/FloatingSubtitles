@@ -76,7 +76,7 @@ private:
 	DualSubtitle CreateDualSubtitles(const char* subtitle) const;
 
 	void                AddProcessedSubtitle(const char* subtitle);
-	const DualSubtitle& GetProcessedSubtitle(const RE::BSString& a_subtitle);
+	DualSubtitle        GetProcessedSubtitle(const RE::BSString& a_subtitle);
 	void                DrawProcessedSubtitle(const RE::BSString& a_subtitle, const DualSubtitle::ScreenParams& a_);
 	ImVec2              MeasureProcessedSubtitle(const RE::BSString& a_subtitle, const DualSubtitle::ScreenParams& a_params);
 	void                RebuildProcessedSubtitles();

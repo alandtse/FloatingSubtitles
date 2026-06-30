@@ -154,8 +154,10 @@ void Manager::AddProcessedSubtitle(const char* subtitle)
 	processedSubtitles.try_emplace(subtitle, CreateDualSubtitles(subtitle));
 }
 
-const DualSubtitle& Manager::GetProcessedSubtitle(const RE::BSString& a_subtitle)
+DualSubtitle Manager::GetProcessedSubtitle(const RE::BSString& a_subtitle)
 {
+	// Return a copy: processedSubtitles is a flat map with no reference stability, so a bare
+	// reference would dangle if a concurrent insert on another thread rehashed it.
 	{
 		ReadLocker readLock(subtitleLock);
 		if (auto it = processedSubtitles.find(a_subtitle.c_str()); it != processedSubtitles.end()) {
@@ -572,9 +574,10 @@ void Manager::Draw()
 			const bool                                 worldQuad = ImGui::Renderer::WorldQuadActive();
 			std::vector<ImGui::Renderer::SubtitleQuad> vrQuads;
 			const ImVec2                               panelSize = ImGui::GetIO().DisplaySize;
-			float                                      vrPenY = 20.0f;
 			constexpr float                            kWorldMetersPerPanelPixel = 0.0016875f;  // world size per panel pixel; tune in-headset (also scalable live via fSubtitleScale MCM)
 			constexpr float                            kQuadGapPx = 20.0f;
+			constexpr float                            kPanelMarginPx = 20.0f;  // top/bottom inset of the subtitle stack within the panel
+			float                                      vrPenY = kPanelMarginPx;
 
 			for (auto& subInfo : subtitleArray | std::views::reverse) {  // reverse order so closer subtitles get rendered on top
 				if (const auto& ref = subInfo.speaker.get()) {
@@ -686,11 +689,15 @@ void Manager::Draw()
 						// billboard at the speaker's world anchor.
 						params.fontScale = 1.0f;
 
+						if (panelSize.x <= 0.0f || panelSize.y <= 0.0f) {
+							continue;  // no panel to lay text into (e.g. minimized); avoids NaN UVs below
+						}
+
 						const ImVec2 sz = MeasureProcessedSubtitle(subInfo.subtitle, params);
 						if (sz.x <= 0.0f || sz.y <= 0.0f) {
 							continue;
 						}
-						if (vrPenY + sz.y > panelSize.y - 20.0f) {
+						if (vrPenY + sz.y > panelSize.y - kPanelMarginPx) {
 							if (logThisFrame) {
 								logger::debug("[Manager::Draw] VR panel full; dropping subtitle '{}'.", subInfo.subtitle.c_str());
 							}
