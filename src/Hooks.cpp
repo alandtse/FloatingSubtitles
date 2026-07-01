@@ -31,30 +31,28 @@ namespace Hooks
 		static RE::UI_MESSAGE_RESULTS thunk(RE::HUDMenu* a_this, RE::UIMessage& a_message)
 		{
 			if (auto hudData = static_cast<RE::HUDData*>(a_message.data)) {
-				switch (hudData->type.get()) {
-				case RE::HUD_MESSAGE_TYPE::kShowSubtitle:
-					{
-						if (Manager::GetSingleton()->HandlesGeneralSubtitles()) {
-							return RE::UI_MESSAGE_RESULTS::kIgnore;
-						}
+				// VR shifts HUD_MESSAGE_TYPE by +3 for values >= kShowSubtitle; resolve the
+				// runtime value via CommonLibVR instead of comparing against the raw SE constant.
+				const auto type = hudData->type.get();
+				if (type == RE::GetHUDMessageType(RE::HUD_MESSAGE_TYPE::kShowSubtitle)) {
+					const bool handles = Manager::GetSingleton()->HandlesGeneralSubtitles();
+					if (Manager::GetSingleton()->GetSettings().debugLog) {
+						logger::debug("[HUDMenu] kShowSubtitle: HandlesGeneral={} -> {}", handles, handles ? "suppress(kIgnore)" : "pass-through");
 					}
-					break;
-				case RE::HUD_MESSAGE_TYPE::kSetMode:
-					{
-						static constexpr std::array badModes{
-							"TweenMode"sv,
-							"InventoryMode"sv,
-							"WorldMapMode"sv,
-							"BookMode"sv,
-							"JournalMode"sv
-						};
-						if (std::ranges::any_of(badModes, [&](const auto& mode) { return string::iequals(hudData->text, mode); })) {
-							Manager::GetSingleton()->SetVisible(!hudData->show);
-						}
+					if (handles) {
+						return RE::UI_MESSAGE_RESULTS::kIgnore;
 					}
-					break;
-				default:
-					break;
+				} else if (type == RE::GetHUDMessageType(RE::HUD_MESSAGE_TYPE::kSetMode)) {
+					static constexpr std::array badModes{
+						"TweenMode"sv,
+						"InventoryMode"sv,
+						"WorldMapMode"sv,
+						"BookMode"sv,
+						"JournalMode"sv
+					};
+					if (std::ranges::any_of(badModes, [&](const auto& mode) { return string::iequals(hudData->text, mode); })) {
+						Manager::GetSingleton()->SetVisible(!hudData->show);
+					}
 				}
 			}
 
@@ -73,7 +71,13 @@ namespace Hooks
 				if (auto dialogueData = static_cast<RE::BSUIMessageData*>(a_message.data)) {
 					auto        interfaceStrings = RE::InterfaceStrings::GetSingleton();
 					const auto& showText = REL::Module::IsVR() ? interfaceStrings->GetVRRuntimeData().showText : interfaceStrings->GetRuntimeData().showText;
-					if (dialogueData->fixedStr == showText && Manager::GetSingleton()->HandlesDialogueSubtitles()) {
+					const bool  match = dialogueData->fixedStr == showText;
+					const bool  handles = Manager::GetSingleton()->HandlesDialogueSubtitles();
+					if (Manager::GetSingleton()->GetSettings().debugLog) {
+						logger::debug("[DialogueMenu] kUpdate fixedStr='{}' showText='{}' match={} handlesDialogue={}",
+							dialogueData->fixedStr.c_str(), showText.c_str(), match, handles);
+					}
+					if (match && handles) {
 						return RE::UI_MESSAGE_RESULTS::kIgnore;
 					}
 				}

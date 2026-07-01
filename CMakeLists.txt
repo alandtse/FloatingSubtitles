@@ -4,7 +4,7 @@ set(VERSION 3.3.3 CACHE STRING "")
 # VR variant counter appended as the 4th version part. 0 = base (Nexus shows the
 # 3-part upstream version); bump to 1+ for a re-release on the same upstream base
 # (Nexus then shows all 4 parts).
-set(VR_VERSION 0)
+set(VR_VERSION 1)
 
 # ---- Options ----
 
@@ -160,7 +160,7 @@ include(FetchContent)
 FetchContent_Declare(
 	ImGuiVRHelper
 	GIT_REPOSITORY https://github.com/alandtse/imgui-vr-helper.git
-	GIT_TAG        v1.1.0
+	GIT_TAG        v1.5.1  # world-quad API (interface 004) + occlusion/depth-scale fixes (#15)
 	SOURCE_SUBDIR  api
 )
 FetchContent_MakeAvailable(ImGuiVRHelper)
@@ -279,6 +279,15 @@ if (COPY_BUILD)
 				COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_PDB_FILE:${PROJECT_NAME}> "${game_path}/SKSE/Plugins/"
 				COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/Skyrim/Data" "${game_path}"
 			)
+			# VR ships a narrower per-platform default (wrap width). Overlay the VR-only Data-vr
+			# on top of the shared Data for the SkyrimVR install only, after the main copy.
+			if (game_path STREQUAL "${SkyrimVRPath}")
+				add_custom_command(
+					TARGET ${PROJECT_NAME}
+					POST_BUILD
+					COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/Skyrim/Data-vr" "${game_path}"
+				)
+			endif ()
 			set(deployed TRUE)
 		endif ()
 	endforeach ()

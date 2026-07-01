@@ -6,6 +6,27 @@ namespace ImGui::Renderer
 	void  Connect();
 	float GetHUDCoverage();
 
+	// Skyrim world units -> meters (1 game unit ≈ 1.428 cm).
+	inline constexpr float kGameUnitToMeter = 0.01428f;
+
+	// One world-anchored subtitle billboard, in Skyrim world space. Submitted as-is; the helper
+	// converts worldPos to OpenVR tracking space itself at Submit time (see SubmitSubtitleQuads).
+	struct SubtitleQuad
+	{
+		RE::NiPoint3 worldPos;        // Skyrim world-space anchor (billboard center)
+		float        u0, v0, u1, v1;  // sub-rect of the shared panel texture, 0..1 (top-left origin)
+		float        heightMeters;    // billboard height in meters (width follows the sub-rect aspect)
+	};
+
+	// True only in VR when connected to a helper that supports world-quad rendering (rev 004).
+	bool WorldQuadActive();
+
+	// Submit the per-frame billboard list to the helper as-is (Skyrim world-space; see
+	// SubtitleQuad). No-op when WorldQuadActive() is false — does not clear a prior list, since
+	// WorldQuadActive() cannot go from true to false without the helper connection itself
+	// dropping, which orphans any prior list on the (now-disconnected) helper side anyway.
+	void SubmitSubtitleQuads(const std::vector<SubtitleQuad>& a_quads);
+
 	// members
 	inline std::atomic initialized{ false };
 

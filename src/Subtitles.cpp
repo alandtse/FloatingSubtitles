@@ -5,6 +5,7 @@
 
 #include "Compatibility.h"
 #include "ImGui/FontStyles.h"
+#include "ImGui/Renderer.h"
 #include "ImGui/Util.h"
 #include "Manager.h"
 
@@ -19,8 +20,9 @@ void Subtitle::WrapTextImpl()
 	lines.clear();
 
 	const auto& [text, maxChars, lang] = cached;
-	// VR's curved HUD shows fewer characters comfortably, so cap wide wrap widths at 45.
-	std::uint32_t maxLineWidth = stl::IsVR() ? (maxChars >= 80 ? 45 : maxChars) : maxChars;
+	// Wrap to the configured max-characters-per-line for both flat and VR; the MCM value is the
+	// single source of truth (VR ships a narrower default via a per-platform settings overlay).
+	std::uint32_t maxLineWidth = maxChars;
 
 	if (IsTextCJK(text)) {
 		WrapCJKText(lines, text, maxLineWidth);
@@ -444,9 +446,53 @@ void DualSubtitle::Invalidate()
 	secondary.Invalidate();
 }
 
-void DualSubtitle::DrawDualSubtitle(const ScreenParams& a_screenParams) const
+ImVec2 DualSubtitle::MeasureBlock(const ScreenParams& a_screenParams) const
 {
 	ImGui::SetWindowFontScale(a_screenParams.fontScale);
+	const auto lineHeight = ImGui::GetTextLineHeight();
+
+	float maxWidth = 0.0f;
+	for (const auto& line : primary.lines) {
+		maxWidth = std::max(maxWidth, line.sizeX);
+	}
+	for (const auto& line : secondary.lines) {
+		maxWidth = std::max(maxWidth, line.sizeX);
+	}
+	maxWidth *= a_screenParams.fontScale;
+
+	// Include the speaker-name line so the measured block isn't narrower than what DrawDualSubtitle
+	// renders (CalcTextSize already reflects the active fontScale set above).
+	if (!a_screenParams.speakerName.empty() && a_screenParams.alphaPrimary >= 0.01f) {
+		const std::string nameLine = std::format("{}:", a_screenParams.speakerName);
+		maxWidth = std::max(maxWidth, ImGui::CalcTextSize(nameLine.c_str()).x);
+	}
+
+	const bool isScrolling = Manager::GetSingleton()->GetSettings().scrollSubtitles && a_screenParams.duration > 0.0f;
+	float      primaryLines = (primary.lines.size() > 1 && isScrolling) ? 1.0f : static_cast<float>(primary.lines.size());
+	float      secondaryLines = (secondary.lines.size() > 1 && isScrolling) ? 1.0f : static_cast<float>(secondary.lines.size());
+	float      totalLines = primaryLines;
+	if (!secondary.lines.empty()) {
+		totalLines += secondaryLines + a_screenParams.spacing;
+	}
+	if (!a_screenParams.speakerName.empty() && a_screenParams.alphaPrimary >= 0.01f) {
+		totalLines += 1.0f;
+	}
+
+	ImGui::SetWindowFontScale(1.0f);
+	return { maxWidth, totalLines * lineHeight };
+}
+
+ImVec2 DualSubtitle::DrawDualSubtitle(const ScreenParams& a_screenParams) const
+{
+	ImGui::SetWindowFontScale(a_screenParams.fontScale);
+
+	// Scale the drop shadow with the apparent (distance) size: a far-off, shrunken subtitle
+	// otherwise keeps the full-size offset, which reads as a separate offset copy. Clamp ≤ 1 so
+	// it's never enlarged past the configured base — preserving the "thin outline" look up close.
+	auto&        imStyle = ImGui::GetStyle();
+	const ImVec2 baseShadowOffset = imStyle.TextShadowOffset;
+	const float  shadowScale = std::min(a_screenParams.fontScale, 1.0f);
+	imStyle.TextShadowOffset = { baseShadowOffset.x * shadowScale, baseShadowOffset.y * shadowScale };
 
 	const auto lineHeight = ImGui::GetTextLineHeight();
 	auto [posX, posY] = a_screenParams.pos;
@@ -465,6 +511,12 @@ void DualSubtitle::DrawDualSubtitle(const ScreenParams& a_screenParams) const
 	}
 	maxWidth *= a_screenParams.fontScale;  // cached widths are unscaled; match the render scale
 
+	// Include the speaker-name line so the clamp below isn't narrower than what gets rendered.
+	if (!a_screenParams.speakerName.empty() && a_screenParams.alphaPrimary >= 0.01f) {
+		const std::string nameLine = std::format("{}:", a_screenParams.speakerName);
+		maxWidth = std::max(maxWidth, ImGui::CalcTextSize(nameLine.c_str()).x);
+	}
+
 	bool  isScrolling = Manager::GetSingleton()->GetSettings().scrollSubtitles && a_screenParams.duration > 0.0f;
 	float primaryLines = (primary.lines.size() > 1 && isScrolling) ? 1.0f : static_cast<float>(primary.lines.size());
 	float secondaryLines = (secondary.lines.size() > 1 && isScrolling) ? 1.0f : static_cast<float>(secondary.lines.size());
@@ -482,20 +534,26 @@ void DualSubtitle::DrawDualSubtitle(const ScreenParams& a_screenParams) const
 	const float  paddingX = 20.0f;
 	const float  paddingY = 20.0f;
 
-	const float minX = (maxWidth * 0.5f) + paddingX;
-	const float maxX = displaySize.x - (maxWidth * 0.5f) - paddingX;
-	if (minX < maxX) {
-		posX = std::clamp(posX, minX, maxX);
-	} else {
-		posX = displaySize.x * 0.5f;
-	}
+	// World-quad subtitles are anchored to the speaker in world space and allowed to scroll off
+	// the panel edge (cut off) for a world-locked feel, so skip the keep-on-screen clamp only in
+	// that mode. Flat — and the VR non-world-quad fallback — still clamp so off-edge subtitles
+	// stay readable at the viewport border.
+	if (!ImGui::Renderer::WorldQuadActive()) {
+		const float minX = (maxWidth * 0.5f) + paddingX;
+		const float maxX = displaySize.x - (maxWidth * 0.5f) - paddingX;
+		if (minX < maxX) {
+			posX = std::clamp(posX, minX, maxX);
+		} else {
+			posX = displaySize.x * 0.5f;
+		}
 
-	const float minY = totalHeight + paddingY;
-	const float maxY = displaySize.y - paddingY;
-	if (minY < maxY) {
-		posY = std::clamp(posY, minY, maxY);
-	} else {
-		posY = displaySize.y - paddingY;
+		const float minY = totalHeight + paddingY;
+		const float maxY = displaySize.y - paddingY;
+		if (minY < maxY) {
+			posY = std::clamp(posY, minY, maxY);
+		} else {
+			posY = displaySize.y - paddingY;
+		}
 	}
 
 	if (!secondary.lines.empty()) {
@@ -521,7 +579,10 @@ void DualSubtitle::DrawDualSubtitle(const ScreenParams& a_screenParams) const
 		ImGui::PopStyleVar();
 	}
 
+	imStyle.TextShadowOffset = baseShadowOffset;
 	ImGui::SetWindowFontScale(1.0f);
+
+	return { maxWidth, totalHeight };
 }
 
 std::string DualSubtitle::GetScaleformCompatibleSubtitle(bool a_dualSubs) const

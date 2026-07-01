@@ -131,6 +131,8 @@ jobs:
           mkdir -p "$stage/SKSE/Plugins"
           # Data assets (esp, Interface, MCM, Scripts) at the archive root...
           cp -r Skyrim/Data/. "$stage/"
+          # ...then the VR-only overlay (narrower per-platform default wrap width) over the top.
+          cp -r Skyrim/Data-vr/. "$stage/"
           # ...plus the multi-runtime plugin and its PDB under SKSE/Plugins.
           cp bin/po3_FloatingSubtitles.dll bin/po3_FloatingSubtitles.pdb "$stage/SKSE/Plugins/"
           sudo apt-get update && sudo apt-get install -y p7zip-full

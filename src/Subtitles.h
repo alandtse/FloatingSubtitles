@@ -67,10 +67,17 @@ struct DualSubtitle
 	DualSubtitle(const LocalizedSubtitle& a_primarySubtitle, const LocalizedSubtitle& a_secondarySubtitle);
 
 	void EnsureWrapped();
+	// True once both subtitles are wrapped, so a reader can safely measure/draw under a shared
+	// lock without calling the mutating EnsureWrapped().
+	bool IsWrapped() const { return primary.isWrapped && secondary.isWrapped; }
 
 	void Invalidate();
 
-	void        DrawDualSubtitle(const ScreenParams& a_screenParams) const;
+	// Draws the block and returns its pixel size {width, height} at the given fontScale.
+	ImVec2 DrawDualSubtitle(const ScreenParams& a_screenParams) const;
+	// Pixel size {width, height} the block would occupy, without drawing — used by the VR
+	// world-quad path to lay each subtitle out in its own panel sub-rect before drawing.
+	ImVec2      MeasureBlock(const ScreenParams& a_screenParams) const;
 	std::string GetScaleformCompatibleSubtitle(bool a_dualSubs) const;
 
 	// members

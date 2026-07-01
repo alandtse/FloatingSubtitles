@@ -1,6 +1,7 @@
 #include "Manager.h"
 
 #include "Compatibility.h"
+#include "ImGui/Renderer.h"
 #include "ImGui/Util.h"
 #include "RayCaster.h"
 #include "SettingLoader.h"
@@ -14,6 +15,8 @@ std::pair<bool, bool> Manager::MCMSettings::LoadMCMSettings(const CSimpleIniA& a
 	current.showDualSubs = a_ini.GetBoolValue("Settings", "bDualSubtitles", current.showDualSubs);
 
 	showSpeakerName = a_ini.GetBoolValue("Settings", "bShowSpeakerName", showSpeakerName);
+	showHUDDialogue = a_ini.GetBoolValue("Settings", "bShowHUDDialogue", showHUDDialogue);
+	showHUDGeneral = a_ini.GetBoolValue("Settings", "bShowHUDGeneral", showHUDGeneral);
 
 	subtitleHeadOffset = static_cast<float>(a_ini.GetDoubleValue("Settings", "fHeadOffset", 20.0)) * ModAPIHandler::GetSingleton()->GetResolutionScale();
 
@@ -114,7 +117,12 @@ bool Manager::HandlesGeneralSubtitles() const
 
 bool Manager::ShowGeneralSubtitles() const
 {
-	return "bGeneralSubtitles:Interface"_pref.value() && settings.current.showGeneralSubtitles;
+	// The mod's own toggle is authoritative: when on, FloatingSubtitles takes over general
+	// subtitles (suppresses the vanilla HUD draw and shows the floating one) regardless of the
+	// vanilla "bGeneralSubtitles:Interface" setting. ANDing that pref meant disabling vanilla also
+	// disabled the mod's suppression (so floating-only was impossible), and the VR menu doesn't
+	// reliably write it.
+	return settings.current.showGeneralSubtitles;
 }
 
 bool Manager::HandlesDialogueSubtitles() const
@@ -124,7 +132,8 @@ bool Manager::HandlesDialogueSubtitles() const
 
 bool Manager::ShowDialogueSubtitles() const
 {
-	return "bDialogueSubtitles:Interface"_pref.value() && settings.current.showDialogueSubtitles && !ModAPIHandler::GetSingleton()->ACCInstalled();
+	// Mod toggle authoritative (see ShowGeneralSubtitles); ACC owns dialogue subtitles when present.
+	return settings.current.showDialogueSubtitles && !ModAPIHandler::GetSingleton()->ACCInstalled();
 }
 
 DualSubtitle Manager::CreateDualSubtitles(const char* subtitle) const
@@ -145,8 +154,10 @@ void Manager::AddProcessedSubtitle(const char* subtitle)
 	processedSubtitles.try_emplace(subtitle, CreateDualSubtitles(subtitle));
 }
 
-const DualSubtitle& Manager::GetProcessedSubtitle(const RE::BSString& a_subtitle)
+DualSubtitle Manager::GetProcessedSubtitle(const RE::BSString& a_subtitle)
 {
+	// Return a copy: processedSubtitles is a flat map with no reference stability, so a bare
+	// reference would dangle if a concurrent insert on another thread rehashed it.
 	{
 		ReadLocker readLock(subtitleLock);
 		if (auto it = processedSubtitles.find(a_subtitle.c_str()); it != processedSubtitles.end()) {
@@ -162,9 +173,10 @@ const DualSubtitle& Manager::GetProcessedSubtitle(const RE::BSString& a_subtitle
 void Manager::DrawProcessedSubtitle(const RE::BSString& a_subtitle, const DualSubtitle::ScreenParams& a_params)
 {
 	{
-		ReadLocker writeLock(subtitleLock);
-		if (auto it = processedSubtitles.find(a_subtitle.c_str()); it != processedSubtitles.end()) {
-			it->second.EnsureWrapped();
+		// Fast path: only the (mutating) EnsureWrapped needs a writer; a wrapped entry is safe to
+		// draw under the shared read lock.
+		ReadLocker readLock(subtitleLock);
+		if (auto it = processedSubtitles.find(a_subtitle.c_str()); it != processedSubtitles.end() && it->second.IsWrapped()) {
 			it->second.DrawDualSubtitle(a_params);
 			return;
 		}
@@ -174,6 +186,23 @@ void Manager::DrawProcessedSubtitle(const RE::BSString& a_subtitle, const DualSu
 	auto [it, inserted] = processedSubtitles.try_emplace(a_subtitle.c_str(), CreateDualSubtitles(a_subtitle.c_str()));
 	it->second.EnsureWrapped();
 	it->second.DrawDualSubtitle(a_params);
+}
+
+ImVec2 Manager::MeasureProcessedSubtitle(const RE::BSString& a_subtitle, const DualSubtitle::ScreenParams& a_params)
+{
+	{
+		// Fast path: a wrapped entry is safe to measure under the shared read lock; only the
+		// mutating EnsureWrapped needs a writer.
+		ReadLocker readLock(subtitleLock);
+		if (auto it = processedSubtitles.find(a_subtitle.c_str()); it != processedSubtitles.end() && it->second.IsWrapped()) {
+			return it->second.MeasureBlock(a_params);
+		}
+	}
+
+	WriteLocker writeLock(subtitleLock);
+	auto [it, inserted] = processedSubtitles.try_emplace(a_subtitle.c_str(), CreateDualSubtitles(a_subtitle.c_str()));
+	it->second.EnsureWrapped();
+	return it->second.MeasureBlock(a_params);
 }
 
 void Manager::AddSubtitle(RE::SubtitleManager* a_manager, const char* a_subtitle)
@@ -224,8 +253,13 @@ void Manager::UpdateSubtitleInfo(RE::SubtitleInfoEx& a_subInfo, bool a_buildOffs
 		return;
 	}
 
+	// Off-screen fallback is gated here (not in QueueOffscreenSubtitle) so it doesn't also
+	// suppress showHUDGeneral/showHUDDialogue, which route ON-screen speech into the same
+	// offscreenSub/talkingActivatorSub strings independently of this toggle.
+	const bool offscreenFallbackEnabled = settings.offscreenSubs != OffscreenSubtitle::kDisabled;
+
 	if (!ref->IsActor() || (ref->IsPlayerRef() && RE::PlayerCamera::GetSingleton()->IsInFirstPerson())) {
-		if (a_buildOffscreenSubs) {
+		if (a_buildOffscreenSubs && offscreenFallbackEnabled) {
 			BuildOffscreenSubtitle(ref, a_subInfo.subtitle, isDialogueSpeaker);
 		}
 		a_subInfo.setFlag(SubtitleFlag::kSkip, true);
@@ -235,7 +269,7 @@ void Manager::UpdateSubtitleInfo(RE::SubtitleInfoEx& a_subInfo, bool a_buildOffs
 	CalculateVisibility(a_subInfo);
 
 	if (a_subInfo.isFlagSet(SubtitleFlag::kOffscreen)) {
-		if (a_buildOffscreenSubs) {
+		if (a_buildOffscreenSubs && offscreenFallbackEnabled) {
 			BuildOffscreenSubtitle(ref, a_subInfo.subtitle, false);
 		}
 		return;
@@ -244,6 +278,19 @@ void Manager::UpdateSubtitleInfo(RE::SubtitleInfoEx& a_subInfo, bool a_buildOffs
 		a_subInfo.setFlag(RE::SubtitleInfoEx::Flag::kDraw, settings.obscuredSubtitleAlpha > 0.0f);
 	} else {
 		a_subInfo.setFlag(SubtitleFlag::kDraw, true);
+	}
+
+	// Optionally also drive the vanilla bottom bar for the on-screen speaker; floating still draws,
+	// this just adds the HUD bar. Off-screen speakers already get it above. Dialogue and general
+	// (ambient) speech have independent toggles and route to their respective bars.
+	if (a_buildOffscreenSubs) {
+		if (isDialogueSpeaker) {
+			if (settings.showHUDDialogue) {
+				BuildOffscreenSubtitle(ref, a_subInfo.subtitle, true);
+			}
+		} else if (settings.showHUDGeneral) {
+			BuildOffscreenSubtitle(ref, a_subInfo.subtitle, false);
+		}
 	}
 
 	CalculateAlphaModifier(a_subInfo);
@@ -314,7 +361,11 @@ void Manager::BuildOffscreenSubtitle(const RE::TESObjectREFRPtr& a_speaker, cons
 
 void Manager::QueueOffscreenSubtitle() const
 {
-	if (settings.offscreenSubs == OffscreenSubtitle::kDisabled && talkingActivatorSub.empty() && lastTalkingActivatorSub.empty()) {
+	// Nothing pending or changed on either channel — skip queuing a no-op UI task. Off-screen
+	// fallback suppression happens upstream in UpdateSubtitleInfo, not here, so this can't also
+	// suppress showHUDGeneral/showHUDDialogue's independent on-screen HUD mirroring.
+	if (talkingActivatorSub.empty() && lastTalkingActivatorSub.empty() &&
+		offscreenSub.empty() && lastOffscreenSub.empty()) {
 		return;
 	}
 
@@ -350,9 +401,20 @@ void Manager::QueueOffscreenSubtitle() const
 
 RE::BSEventNotifyControl Manager::ProcessEvent(const RE::MenuOpenCloseEvent* a_event, RE::BSTEventSource<RE::MenuOpenCloseEvent>*)
 {
-	if (a_event && a_event->menuName == RE::DialogueMenu::MENU_NAME && !a_event->opening) {
+	if (!a_event) {
+		return RE::BSEventNotifyControl::kContinue;
+	}
+
+	if (a_event->menuName == RE::DialogueMenu::MENU_NAME && !a_event->opening) {
 		talkingActivatorSub.clear();
 		lastTalkingActivatorSub.clear();
+	}
+
+	// MCM-Helper's config lives under the Journal menu. Re-read settings when it closes so MCM
+	// changes apply at runtime — the Papyrus OnConfigClose callback the mod also uses is
+	// unreliable under VR's MCM-Helper, which left toggles (e.g. disabling subtitles) ignored.
+	if (a_event->menuName == RE::JournalMenu::MENU_NAME && !a_event->opening) {
+		LoadMCMSettings();
 	}
 
 	return RE::BSEventNotifyControl::kContinue;
@@ -464,6 +526,10 @@ RE::NiPoint3 Manager::CalculateSubtitleAnchorPos(const RE::SubtitleInfoEx& a_sub
 void Manager::Draw()
 {
 	if (SkipRender()) {
+		// Clear any world-quad billboards from the previous frame so stale subtitles don't linger.
+		if (ImGui::Renderer::WorldQuadActive()) {
+			ImGui::Renderer::SubmitSubtitleQuads({});
+		}
 		return;
 	}
 
@@ -511,6 +577,17 @@ void Manager::Draw()
 
 			const auto playerLoc = RE::PlayerCharacter::GetSingleton()->GetPosition();
 
+			// VR world-quad path: render each subtitle into its own panel sub-rect and project it
+			// onto a billboard at the speaker's world position (stable, no HUD-plane swim). Collect
+			// the billboards here and submit them after the loop.
+			const bool                                 worldQuad = ImGui::Renderer::WorldQuadActive();
+			std::vector<ImGui::Renderer::SubtitleQuad> vrQuads;
+			const ImVec2                               panelSize = ImGui::GetIO().DisplaySize;
+			constexpr float                            kWorldMetersPerPanelPixel = 0.0016875f;  // world size per panel pixel; tune in-headset (also scalable live via fSubtitleScale MCM)
+			constexpr float                            kQuadGapPx = 20.0f;
+			constexpr float                            kPanelMarginPx = 20.0f;  // top/bottom inset of the subtitle stack within the panel
+			float                                      vrPenY = kPanelMarginPx;
+
 			for (auto& subInfo : subtitleArray | std::views::reverse) {  // reverse order so closer subtitles get rendered on top
 				if (const auto& ref = subInfo.speaker.get()) {
 					if (inFreeCameraMode) {
@@ -522,9 +599,14 @@ void Manager::Draw()
 					}
 
 					auto anchorPos = CalculateSubtitleAnchorPos(subInfo, logThisFrame);
-					auto zDepth = ImGui::WorldToScreenLoc(anchorPos, params.pos, logThisFrame);
-					if (zDepth < 0.0f) {
-						continue;
+
+					if (!worldQuad) {
+						// Flat (and VR fallback when the helper lacks world-quad support): project the
+						// anchor onto the screen/HUD plane and skip it if behind the camera.
+						auto zDepth = ImGui::WorldToScreenLoc(anchorPos, params.pos, logThisFrame);
+						if (zDepth < 0.0f) {
+							continue;
+						}
 					}
 
 					auto alphaMult = std::bit_cast<float>(subInfo.alphaModifier());
@@ -610,55 +692,122 @@ void Manager::Draw()
 					params.elapsedTime = elapsedTime;
 					params.duration = duration;
 
-					// Distance-based font scaling: full size within kFontScaleStartDistance,
-					// shrinking to (1 - kMaxFontScaleReduction) at the max subtitle distance.
-					constexpr float kFontScaleStartDistance = 200.0f;
-					constexpr float kMaxFontScaleReduction = 0.5f;
-					float           distance = std::sqrt(subInfo.targetDistance);
-					float           fontScale = 1.0f;
-					float           maxDist = std::sqrt(maxDistanceStartSq);
-					if (maxDist > kFontScaleStartDistance && distance > kFontScaleStartDistance) {
-						fontScale = 1.0f - ((distance - kFontScaleStartDistance) / (maxDist - kFontScaleStartDistance)) * kMaxFontScaleReduction;
-						fontScale = std::clamp(fontScale, 1.0f - kMaxFontScaleReduction, 1.0f);
-					}
+					if (worldQuad) {
+						// World quad supplies perspective via height_m, so render the panel text at a
+						// fixed scale and lay each subtitle into its own panel sub-rect, then record a
+						// billboard at the speaker's world anchor.
+						params.fontScale = 1.0f;
 
-					// Shrink a distant speaker's subtitle further when a closer speaker sits
-					// within ~25 degrees of the same direction, to reduce overlap.
-					bool         closerSpeakerInBetween = false;
-					RE::NiPoint3 dirDistant = ref->GetPosition() - playerLoc;
-					dirDistant.Unitize();
+						if (panelSize.x <= 0.0f || panelSize.y <= 0.0f) {
+							continue;  // no panel to lay text into (e.g. minimized); avoids NaN UVs below
+						}
 
-					for (const auto& otherSubInfo : subtitleArray) {
-						if (&otherSubInfo != &subInfo && otherSubInfo.isFlagSet(SubtitleFlag::kDraw)) {
-							if (otherSubInfo.targetDistance < subInfo.targetDistance) {
-								if (const auto otherRef = otherSubInfo.speaker.get()) {
-									RE::NiPoint3 dirCloser = otherRef->GetPosition() - playerLoc;
-									dirCloser.Unitize();
-									float dot = dirDistant.x * dirCloser.x + dirDistant.y * dirCloser.y + dirDistant.z * dirCloser.z;
-									// cos(25 degrees) ≈ 0.906
-									if (dot > 0.906f) {
-										closerSpeakerInBetween = true;
-										break;
+						const ImVec2 sz = MeasureProcessedSubtitle(subInfo.subtitle, params);
+						if (sz.x <= 0.0f || sz.y <= 0.0f) {
+							continue;
+						}
+						if (vrPenY + sz.y > panelSize.y - kPanelMarginPx) {
+							if (logThisFrame) {
+								logger::debug("[Manager::Draw] VR panel full; dropping subtitle '{}'.", subInfo.subtitle.c_str());
+							}
+							continue;
+						}
+
+						const float rectTop = vrPenY;
+						const float rectBottom = vrPenY + sz.y;
+						const float posX = panelSize.x * 0.5f;
+						params.pos = { posX, rectBottom };  // DrawDualSubtitle grows the block upward from posY
+						DrawProcessedSubtitle(subInfo.subtitle, params);
+
+						const float  heightMeters = sz.y * kWorldMetersPerPanelPixel * settings.subtitleScale;
+						RE::NiPoint3 quadPos = anchorPos;
+						quadPos.z += 0.5f * heightMeters / ImGui::Renderer::kGameUnitToMeter;  // raise so text sits above the head (pos is the quad center)
+
+						// Clamp the panel sub-rect so the UVs stay in [0,1] even if a long speaker
+						// name / unbreakable line is wider (or the stack is taller) than the panel;
+						// the helper rejects a degenerate (zero-area) rect.
+						const float rectLeft = std::clamp(posX - sz.x * 0.5f, 0.0f, panelSize.x);
+						const float rectRight = std::clamp(posX + sz.x * 0.5f, 0.0f, panelSize.x);
+						const float uvTop = std::clamp(rectTop, 0.0f, panelSize.y);
+						const float uvBottom = std::clamp(rectBottom, 0.0f, panelSize.y);
+
+						ImGui::Renderer::SubtitleQuad quad{};
+						quad.worldPos = quadPos;
+						quad.u0 = rectLeft / panelSize.x;
+						quad.u1 = rectRight / panelSize.x;
+						quad.v0 = uvTop / panelSize.y;
+						quad.v1 = uvBottom / panelSize.y;
+						quad.heightMeters = heightMeters;
+						vrQuads.push_back(quad);
+
+						vrPenY = rectBottom + kQuadGapPx;
+
+						if (logThisFrame) {
+							logger::debug("[Manager::Draw] Speaker '{}' worldquad sz=({:.0f}x{:.0f}) h={:.2f}m",
+								ModAPIHandler::GetSingleton()->GetReferenceName(ref), sz.x, sz.y, heightMeters);
+						}
+					} else {
+						// Distance-based font scaling for the flat screen path (and VR fallback when
+						// the helper lacks world-quad support).
+						constexpr float kFontScaleStartDistance = 200.0f;
+						constexpr float kMaxFontScaleReduction = 0.5f;
+						float           distance = std::sqrt(subInfo.targetDistance);
+						float           fontScale = 1.0f;
+						if (REL::Module::IsVR()) {
+							constexpr float kFullSizeDistance = 200.0f;
+							constexpr float kMinFontScale = 0.15f;
+							fontScale = std::clamp(kFullSizeDistance / std::max(distance, 1.0f), kMinFontScale, 1.0f);
+						} else {
+							float maxDist = std::sqrt(maxDistanceStartSq);
+							if (maxDist > kFontScaleStartDistance && distance > kFontScaleStartDistance) {
+								fontScale = 1.0f - ((distance - kFontScaleStartDistance) / (maxDist - kFontScaleStartDistance)) * kMaxFontScaleReduction;
+								fontScale = std::clamp(fontScale, 1.0f - kMaxFontScaleReduction, 1.0f);
+							}
+						}
+
+						// Shrink a distant speaker's subtitle further when a closer speaker sits
+						// within ~25 degrees of the same direction, to reduce overlap.
+						bool         closerSpeakerInBetween = false;
+						RE::NiPoint3 dirDistant = ref->GetPosition() - playerLoc;
+						dirDistant.Unitize();
+
+						for (const auto& otherSubInfo : subtitleArray) {
+							if (&otherSubInfo != &subInfo && otherSubInfo.isFlagSet(SubtitleFlag::kDraw)) {
+								if (otherSubInfo.targetDistance < subInfo.targetDistance) {
+									if (const auto otherRef = otherSubInfo.speaker.get()) {
+										RE::NiPoint3 dirCloser = otherRef->GetPosition() - playerLoc;
+										dirCloser.Unitize();
+										float dot = dirDistant.x * dirCloser.x + dirDistant.y * dirCloser.y + dirDistant.z * dirCloser.z;
+										// cos(25 degrees) ≈ 0.906
+										if (dot > 0.906f) {
+											closerSpeakerInBetween = true;
+											break;
+										}
 									}
 								}
 							}
 						}
+
+						if (closerSpeakerInBetween) {
+							fontScale *= 0.75f;
+							fontScale = std::clamp(fontScale, 0.40f, 1.0f);
+						}
+
+						params.fontScale = fontScale * settings.subtitleScale;
+
+						if (logThisFrame) {
+							logger::debug("[Manager::Draw] Speaker '{}' distance={:.1f}, fontScale={:.2f}, inBetween={}",
+								ModAPIHandler::GetSingleton()->GetReferenceName(ref), distance, params.fontScale, closerSpeakerInBetween);
+						}
+
+						DrawProcessedSubtitle(subInfo.subtitle, params);
 					}
-
-					if (closerSpeakerInBetween) {
-						fontScale *= 0.75f;
-						fontScale = std::clamp(fontScale, 0.40f, 1.0f);
-					}
-
-					params.fontScale = fontScale * settings.subtitleScale;
-
-					if (logThisFrame) {
-						logger::debug("[Manager::Draw] Speaker '{}' distance={:.1f}, fontScale={:.2f}, inBetween={}",
-							ModAPIHandler::GetSingleton()->GetReferenceName(ref), distance, params.fontScale, closerSpeakerInBetween);
-					}
-
-					DrawProcessedSubtitle(subInfo.subtitle, params);
 				}
+			}
+
+			// Hand the per-frame world-quad billboard list to the helper (clears when empty).
+			if (worldQuad) {
+				ImGui::Renderer::SubmitSubtitleQuads(vrQuads);
 			}
 
 			// Drop per-speaker timing caches for actors that are no longer speaking.

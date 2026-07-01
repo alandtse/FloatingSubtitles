@@ -14,14 +14,15 @@ namespace ImGui::Renderer
 	void Connect()
 	{
 		if (REL::Module::IsVR()) {
-			// Register as an always-on HUD layer (no interactive overlay, no dashboard)
+			// Register as a world-quad client: subtitles render as billboards anchored at the
+			// speaker's world position (stable, no HUD-plane swim), not the head-locked HUD plane.
 			if (!g_vrClient.Connect("FloatingSubtitles", Version::NAME.data(),
-					ImGuiVRHelperPluginAPI::kClientFlag_HUDMode)) {
+					ImGuiVRHelperPluginAPI::kClientFlag_WorldQuad)) {
 				logger::warn("ImGuiVRHelper not found or registration failed — VR subtitle panel will not be available."sv);
 				return;
 			}
 
-			logger::info("Connected to ImGuiVRHelper as HUD client."sv);
+			logger::info("Connected to ImGuiVRHelper as world-quad client (world quads supported: {}).", g_vrClient.HasWorldQuads());
 
 			// Provide the same font/style that the SSE path loads so the HUD
 			// context renders with the right glyphs
@@ -37,6 +38,51 @@ namespace ImGui::Renderer
 			return g_vrClient.GetHudCoverage();
 		}
 		return 1.0f;
+	}
+
+	bool WorldQuadActive()
+	{
+		return REL::Module::IsVR() && g_vrClient.IsConnected() && g_vrClient.HasWorldQuads();
+	}
+
+	void SubmitSubtitleQuads(const std::vector<SubtitleQuad>& a_quads)
+	{
+		if (!WorldQuadActive()) {
+			return;
+		}
+		if (a_quads.empty()) {
+			g_vrClient.SubmitWorldQuads(nullptr, 0);
+			return;
+		}
+
+		// Submit raw Skyrim world-space coordinates; the helper converts to OpenVR tracking space
+		// itself, at Submit time, using its own fresh RoomNode + compositor pose read. Doing the
+		// conversion here (mid-frame, on the game thread) used a RoomNode snapshot from an earlier
+		// instant than the compositor pose the helper builds vpWorldSpace from — while walking, that
+		// gap (plus IPC/scheduling jitter carrying it to the helper) showed up as visible bobbing.
+		static std::uint64_t frameCount = 0;
+		const bool           logThisFrame = Manager::GetSingleton()->GetSettings().debugLog && (++frameCount % 180 == 0);
+
+		std::vector<ImGuiVRHelperPluginAPI::WorldQuad> out;
+		out.reserve(a_quads.size());
+		for (const auto& q : a_quads) {
+			ImGuiVRHelperPluginAPI::WorldQuad wq{};
+			wq.u0 = q.u0;
+			wq.v0 = q.v0;
+			wq.u1 = q.u1;
+			wq.v1 = q.v1;
+			wq.pos[0] = q.worldPos.x;
+			wq.pos[1] = q.worldPos.y;
+			wq.pos[2] = q.worldPos.z;
+			wq.height_m = q.heightMeters;
+			out.push_back(wq);
+
+			if (logThisFrame && &q == &a_quads.front()) {
+				logger::debug("[WorldQuad] P_sky=({:.1f},{:.1f},{:.1f}) h={:.2f}m", q.worldPos.x, q.worldPos.y, q.worldPos.z, q.heightMeters);
+			}
+		}
+
+		g_vrClient.SubmitWorldQuads(out.data(), out.size());
 	}
 
 	struct CreateD3DAndSwapChain

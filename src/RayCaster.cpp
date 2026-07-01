@@ -1,5 +1,6 @@
 #include "RayCaster.h"
 
+#include "ImGui/Renderer.h"
 #include "ImGui/Util.h"
 
 RayCollector::RayCollector(RE::Actor* a_actor, RE::COL_LAYER a_layer) :
@@ -74,7 +75,49 @@ RayCaster::Result RayCaster::GetResult(bool a_debugRay, bool a_doRayCast)
 		return Result::kOffscreen;
 	}
 
-	if (auto* camera = RE::Main::WorldRootCamera()) {
+	if (REL::Module::IsVR()) {
+		// Project with the camera directly instead of PointInFrustum: Skyrim VR's frustum
+		// testing has genuine per-eye complexity flat doesn't (the engine's own frustum-overlap
+		// function takes an extra eye index in VR), so a single-frustum test may not classify
+		// on/off-screen correctly here — unverified for PointInFrustum specifically, see #2. Do
+		// NOT route through ImGui::WorldToScreenLoc here: GetResult runs on the game update
+		// thread (PlayerCharacter::Update) where our ImGui context isn't current, so GetIO()
+		// would dereference a null context and crash.
+		auto* camera = RE::Main::WorldRootCamera();
+		if (!camera) {
+			return Result::kOffscreen;
+		}
+		const auto&       worldToCam = camera->GetVRRuntimeData().worldToCam;
+		const auto&       bound = root->worldBound;
+		RE::NiRect<float> port(0.0f, 1.0f, 1.0f, 0.0f);
+		float             x = 0.0f, y = 0.0f, z = -1.0f;
+		if (!RE::NiCamera::WorldPtToScreenPt3(worldToCam, port, bound.center, x, y, z, 1e-5f)) {
+			return Result::kOffscreen;
+		}
+		// Expand the on-screen test by the actor's bound radius in screen space, so an actor whose
+		// center is just past the edge but whose body is still visible isn't wrongly flagged
+		// off-screen (parity with the flat PointInFrustum(center, radius) test).
+		float margin = 0.0f;
+		for (const auto& off : { RE::NiPoint3(bound.radius, 0.0f, 0.0f), RE::NiPoint3(0.0f, 0.0f, bound.radius) }) {
+			float ox = 0.0f, oy = 0.0f, oz = 0.0f;
+			if (RE::NiCamera::WorldPtToScreenPt3(worldToCam, port, bound.center + off, ox, oy, oz, 1e-5f)) {
+				margin = std::max({ margin, std::fabs(ox - x), std::fabs(oy - y) });
+			}
+		}
+		// Subtitles on the head-locked HUD plane fill only its coverage fraction of the view, so
+		// warp the test to match. World-quad billboards are visible across the whole view — test
+		// the raw [0,1] frustum instead.
+		if (!ImGui::Renderer::WorldQuadActive()) {
+			if (const float coverage = ImGui::Renderer::GetHUDCoverage(); coverage > 0.0f) {
+				x = 0.5f + (x - 0.5f) / coverage;
+				y = 0.5f + (y - 0.5f) / coverage;
+				margin /= coverage;
+			}
+		}
+		if (z < 0.0f || x < -margin || x > 1.0f + margin || y < -margin || y > 1.0f + margin) {
+			return Result::kOffscreen;
+		}
+	} else if (auto* camera = RE::Main::WorldRootCamera()) {
 		if (!camera->PointInFrustum(root->worldBound.center, root->worldBound.radius)) {
 			return Result::kOffscreen;
 		}
