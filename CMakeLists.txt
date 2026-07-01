@@ -160,7 +160,7 @@ include(FetchContent)
 FetchContent_Declare(
 	ImGuiVRHelper
 	GIT_REPOSITORY https://github.com/alandtse/imgui-vr-helper.git
-	GIT_TAG        v1.5.0  # world-quad API (interface 004)
+	GIT_TAG        v1.5.1  # world-quad API (interface 004) + occlusion/depth-scale fixes (#15)
 	SOURCE_SUBDIR  api
 )
 FetchContent_MakeAvailable(ImGuiVRHelper)
