@@ -253,8 +253,13 @@ void Manager::UpdateSubtitleInfo(RE::SubtitleInfoEx& a_subInfo, bool a_buildOffs
 		return;
 	}
 
+	// Off-screen fallback is gated here (not in QueueOffscreenSubtitle) so it doesn't also
+	// suppress showHUDGeneral/showHUDDialogue, which route ON-screen speech into the same
+	// offscreenSub/talkingActivatorSub strings independently of this toggle.
+	const bool offscreenFallbackEnabled = settings.offscreenSubs != OffscreenSubtitle::kDisabled;
+
 	if (!ref->IsActor() || (ref->IsPlayerRef() && RE::PlayerCamera::GetSingleton()->IsInFirstPerson())) {
-		if (a_buildOffscreenSubs) {
+		if (a_buildOffscreenSubs && offscreenFallbackEnabled) {
 			BuildOffscreenSubtitle(ref, a_subInfo.subtitle, isDialogueSpeaker);
 		}
 		a_subInfo.setFlag(SubtitleFlag::kSkip, true);
@@ -264,7 +269,7 @@ void Manager::UpdateSubtitleInfo(RE::SubtitleInfoEx& a_subInfo, bool a_buildOffs
 	CalculateVisibility(a_subInfo);
 
 	if (a_subInfo.isFlagSet(SubtitleFlag::kOffscreen)) {
-		if (a_buildOffscreenSubs) {
+		if (a_buildOffscreenSubs && offscreenFallbackEnabled) {
 			BuildOffscreenSubtitle(ref, a_subInfo.subtitle, false);
 		}
 		return;
@@ -356,7 +361,11 @@ void Manager::BuildOffscreenSubtitle(const RE::TESObjectREFRPtr& a_speaker, cons
 
 void Manager::QueueOffscreenSubtitle() const
 {
-	if (settings.offscreenSubs == OffscreenSubtitle::kDisabled && talkingActivatorSub.empty() && lastTalkingActivatorSub.empty()) {
+	// Nothing pending or changed on either channel — skip queuing a no-op UI task. Off-screen
+	// fallback suppression happens upstream in UpdateSubtitleInfo, not here, so this can't also
+	// suppress showHUDGeneral/showHUDDialogue's independent on-screen HUD mirroring.
+	if (talkingActivatorSub.empty() && lastTalkingActivatorSub.empty() &&
+		offscreenSub.empty() && lastOffscreenSub.empty()) {
 		return;
 	}
 

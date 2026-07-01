@@ -21,8 +21,10 @@ namespace ImGui::Renderer
 	// True only in VR when connected to a helper that supports world-quad rendering (rev 004).
 	bool WorldQuadActive();
 
-	// Convert each quad's Skyrim anchor to OpenVR tracking space and submit the per-frame
-	// billboard list to the helper. No-op (and clears the list) when WorldQuadActive() is false.
+	// Submit the per-frame billboard list to the helper as-is (Skyrim world-space; see
+	// SubtitleQuad). No-op when WorldQuadActive() is false — does not clear a prior list, since
+	// WorldQuadActive() cannot go from true to false without the helper connection itself
+	// dropping, which orphans any prior list on the (now-disconnected) helper side anyway.
 	void SubmitSubtitleQuads(const std::vector<SubtitleQuad>& a_quads);
 
 	// members
