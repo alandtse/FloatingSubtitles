@@ -9,8 +9,8 @@ namespace ImGui::Renderer
 	// Skyrim world units -> meters (1 game unit ≈ 1.428 cm).
 	inline constexpr float kGameUnitToMeter = 0.01428f;
 
-	// One world-anchored subtitle billboard, in Skyrim world space. The renderer converts
-	// worldPos to OpenVR tracking space and hands the list to the helper each frame.
+	// One world-anchored subtitle billboard, in Skyrim world space. Submitted as-is; the helper
+	// converts worldPos to OpenVR tracking space itself at Submit time (see SubmitSubtitleQuads).
 	struct SubtitleQuad
 	{
 		RE::NiPoint3 worldPos;        // Skyrim world-space anchor (billboard center)

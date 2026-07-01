@@ -55,54 +55,30 @@ namespace ImGui::Renderer
 			return;
 		}
 
-		// Head-independent Skyrim-world -> OpenVR-tracking map. The player's VR RoomNode is the
-		// play-space origin: its world transform maps room space -> Skyrim world and excludes head
-		// rotation (the HMD node is its child), so a stationary speaker maps to a constant tracking
-		// position regardless of gaze (no swim). GetVRNodeData()/RoomNode are existing CommonLibVR
-		// accessors.
-		const auto player = RE::PlayerCharacter::GetSingleton();
-		const auto nodeData = player ? player->GetVRNodeData() : nullptr;
-		const auto room = nodeData ? nodeData->RoomNode.get() : nullptr;
-		if (!room) {
-			g_vrClient.SubmitWorldQuads(nullptr, 0);
-			return;
-		}
-		const RE::NiTransform& roomXf = room->world;  // room-local -> Skyrim world
-		const auto&            rRoom = roomXf.rotate.entry;
-		const float            invScale = (roomXf.scale != 0.0f) ? (1.0f / roomXf.scale) : 1.0f;
-
+		// Submit raw Skyrim world-space coordinates; the helper converts to OpenVR tracking space
+		// itself, at Submit time, using its own fresh RoomNode + compositor pose read. Doing the
+		// conversion here (mid-frame, on the game thread) used a RoomNode snapshot from an earlier
+		// instant than the compositor pose the helper builds vpWorldSpace from — while walking, that
+		// gap (plus IPC/scheduling jitter carrying it to the helper) showed up as visible bobbing.
 		static std::uint64_t frameCount = 0;
 		const bool           logThisFrame = Manager::GetSingleton()->GetSettings().debugLog && (++frameCount % 180 == 0);
 
 		std::vector<ImGuiVRHelperPluginAPI::WorldQuad> out;
 		out.reserve(a_quads.size());
 		for (const auto& q : a_quads) {
-			// World -> room-local (Skyrim units, world-aligned axes): rotate^T * (P - origin) / scale.
-			const RE::NiPoint3 rel = q.worldPos - roomXf.translate;
-			const RE::NiPoint3 pRoom{
-				(rRoom[0][0] * rel.x + rRoom[1][0] * rel.y + rRoom[2][0] * rel.z) * invScale,
-				(rRoom[0][1] * rel.x + rRoom[1][1] * rel.y + rRoom[2][1] * rel.z) * invScale,
-				(rRoom[0][2] * rel.x + rRoom[1][2] * rel.y + rRoom[2][2] * rel.z) * invScale
-			};
-			// Room-local is world-aligned (x-right, y-forward, z-up) -> OpenVR tracking
-			// (x-right, y-up, z-toward-user) = (x, z, -y), game units -> meters. The room origin
-			// is the OpenVR standing origin, so this is the tracking-space position directly.
-			const RE::NiPoint3 p = pRoom * kGameUnitToMeter;
-
 			ImGuiVRHelperPluginAPI::WorldQuad wq{};
 			wq.u0 = q.u0;
 			wq.v0 = q.v0;
 			wq.u1 = q.u1;
 			wq.v1 = q.v1;
-			wq.pos[0] = p.x;
-			wq.pos[1] = p.z;
-			wq.pos[2] = -p.y;
+			wq.pos[0] = q.worldPos.x;
+			wq.pos[1] = q.worldPos.y;
+			wq.pos[2] = q.worldPos.z;
 			wq.height_m = q.heightMeters;
 			out.push_back(wq);
 
 			if (logThisFrame && &q == &a_quads.front()) {
-				logger::debug("[WorldQuad] P_sky=({:.1f},{:.1f},{:.1f}) -> P_trk=({:.3f},{:.3f},{:.3f})m h={:.2f}m roomScale={:.4f}",
-					q.worldPos.x, q.worldPos.y, q.worldPos.z, wq.pos[0], wq.pos[1], wq.pos[2], q.heightMeters, roomXf.scale);
+				logger::debug("[WorldQuad] P_sky=({:.1f},{:.1f},{:.1f}) h={:.2f}m", q.worldPos.x, q.worldPos.y, q.worldPos.z, q.heightMeters);
 			}
 		}
 
