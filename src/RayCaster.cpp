@@ -76,12 +76,13 @@ RayCaster::Result RayCaster::GetResult(bool a_debugRay, bool a_doRayCast)
 	}
 
 	if (REL::Module::IsVR()) {
-		// The WorldRootCamera frustum lags the per-eye HMD view, so PointInFrustum reports a
-		// speaker as off-screen for the first frames of a conversation — which made the vanilla
-		// bottom subtitle show alongside the floating one until a head turn refreshed it. Project
-		// with the camera directly. Do NOT route through ImGui::WorldToScreenLoc here: GetResult
-		// runs on the game update thread (PlayerCharacter::Update) where our ImGui context isn't
-		// current, so GetIO() would dereference a null context and crash.
+		// Project with the camera directly instead of PointInFrustum: Skyrim VR's frustum
+		// testing has genuine per-eye complexity flat doesn't (the engine's own frustum-overlap
+		// function takes an extra eye index in VR), so a single-frustum test may not classify
+		// on/off-screen correctly here — unverified for PointInFrustum specifically, see #2. Do
+		// NOT route through ImGui::WorldToScreenLoc here: GetResult runs on the game update
+		// thread (PlayerCharacter::Update) where our ImGui context isn't current, so GetIO()
+		// would dereference a null context and crash.
 		auto* camera = RE::Main::WorldRootCamera();
 		if (!camera) {
 			return Result::kOffscreen;
