@@ -27,7 +27,7 @@ on:
       mod_filename:
         description: "Nexus file name (without extension)."
         required: false
-        default: "Floating Subtitles"
+        default: "Floating Subtitles VR"
       mod_version:
         description: "Nexus version to publish. Defaults to the tag without 'v'."
         required: false
@@ -56,7 +56,7 @@ on:
       mod_filename:
         required: false
         type: string
-        default: "Floating Subtitles"
+        default: "Floating Subtitles VR"
       mod_version:
         required: false
         type: string
