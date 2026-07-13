@@ -359,6 +359,21 @@ void Manager::BuildOffscreenSubtitle(const RE::TESObjectREFRPtr& a_speaker, cons
 	}
 }
 
+namespace
+{
+	void InvokeHudSubtitle(RE::HUDMenu* a_hudMenu, const std::string& a_prevSub, const std::string& a_currentSub)
+	{
+		if (!a_prevSub.empty()) {
+			RE::GFxValue subtitleText(a_prevSub);
+			a_hudMenu->GetRuntimeData().root.Invoke("HideSubtitle", nullptr, &subtitleText, 1);
+		}
+		if (!a_currentSub.empty()) {
+			RE::GFxValue subtitleText(a_currentSub);
+			a_hudMenu->GetRuntimeData().root.Invoke("ShowSubtitle", nullptr, &subtitleText, 1);
+		}
+	}
+}
+
 void Manager::QueueOffscreenSubtitle() const
 {
 	// Nothing pending or changed on either channel — skip queuing a no-op UI task. Off-screen
@@ -371,7 +386,13 @@ void Manager::QueueOffscreenSubtitle() const
 
 	if (lastTalkingActivatorSub != talkingActivatorSub) {
 		SKSE::GetTaskInterface()->AddUITask([currentSub = talkingActivatorSub, prevSub = lastTalkingActivatorSub]() {
-			if (auto dialogueMenu = RE::UI::GetSingleton()->GetMenu<RE::DialogueMenu>()) {
+			// VR's DialogueMenu doesn't implement ShowDialogueText/HideDialogueText; mirror through
+			// HUDMenu's ShowSubtitle instead, matching what VR's own dialogue handler does internally.
+			if (REL::Module::IsVR()) {
+				if (auto hudMenu = RE::UI::GetSingleton()->GetMenu<RE::HUDMenu>()) {
+					InvokeHudSubtitle(hudMenu.get(), prevSub, currentSub);
+				}
+			} else if (auto dialogueMenu = RE::UI::GetSingleton()->GetMenu<RE::DialogueMenu>()) {
 				if (!prevSub.empty()) {
 					RE::FxResponseArgs<0> args{};
 					RE::FxDelegate::Invoke(dialogueMenu->uiMovie.get(), "HideDialogueText", args);
@@ -386,14 +407,7 @@ void Manager::QueueOffscreenSubtitle() const
 	} else if (lastOffscreenSub != offscreenSub) {
 		SKSE::GetTaskInterface()->AddUITask([currentSub = offscreenSub, prevSub = lastOffscreenSub]() {
 			if (auto hudMenu = RE::UI::GetSingleton()->GetMenu<RE::HUDMenu>()) {
-				if (!prevSub.empty()) {
-					RE::GFxValue subtitleText(prevSub);
-					hudMenu->GetRuntimeData().root.Invoke("HideSubtitle", nullptr, &subtitleText, 1);
-				}
-				if (!currentSub.empty()) {
-					RE::GFxValue subtitleText(currentSub);
-					hudMenu->GetRuntimeData().root.Invoke("ShowSubtitle", nullptr, &subtitleText, 1);
-				}
+				InvokeHudSubtitle(hudMenu.get(), prevSub, currentSub);
 			}
 		});
 	}
