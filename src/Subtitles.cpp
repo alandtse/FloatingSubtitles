@@ -338,7 +338,6 @@ void Subtitle::WrapText()
 	if (lines.empty()) {
 		WrapTextImpl();
 	}
-	logger::info("Subtitle wrapped into {} lines", lines.size());
 }
 
 void Subtitle::Invalidate()
