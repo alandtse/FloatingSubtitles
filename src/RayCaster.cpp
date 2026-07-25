@@ -76,13 +76,13 @@ RayCaster::Result RayCaster::GetResult(bool a_debugRay, bool a_doRayCast)
 	}
 
 	if (REL::Module::IsVR()) {
-		// Project with the camera directly instead of PointInFrustum: Skyrim VR's frustum
-		// testing has genuine per-eye complexity flat doesn't (the engine's own frustum-overlap
-		// function takes an extra eye index in VR), so a single-frustum test may not classify
-		// on/off-screen correctly here — unverified for PointInFrustum specifically, see #2. Do
-		// NOT route through ImGui::WorldToScreenLoc here: GetResult runs on the game update
-		// thread (PlayerCharacter::Update) where our ImGui context isn't current, so GetIO()
-		// would dereference a null context and crash.
+		// Project with the camera directly instead of PointInFrustum: in VR it reads
+		// NiCamera::viewFrustumArray, which is left-eye only (per GetNearPlane's own
+		// "return left in VR"), not a combined stereo frustum -- it can miss actors
+		// visible only in the right eye. Do NOT route through ImGui::WorldToScreenLoc
+		// here: GetResult runs on the game update thread (PlayerCharacter::Update)
+		// where our ImGui context isn't current, so GetIO() would dereference a null
+		// context and crash.
 		auto* camera = RE::Main::WorldRootCamera();
 		if (!camera) {
 			return Result::kOffscreen;
